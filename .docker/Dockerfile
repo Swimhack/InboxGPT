@@ -1,11 +1,18 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
-# Install dependencies
+# Copy package files and scripts for postinstall
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+COPY scripts ./scripts
+COPY .env.example ./
+
+# Install all dependencies (including building native modules)
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -16,20 +23,26 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine AS runner
 
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 ENV NODE_ENV=production
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+COPY scripts ./scripts
+COPY .env.example ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Remove build dependencies to reduce image size
+RUN apk del python3 make g++
 
 # Copy built application
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/drizzle ./drizzle
-COPY --from=builder /app/src/lib/db ./src/lib/db
 
 # Create data directory
 RUN mkdir -p /app/data
