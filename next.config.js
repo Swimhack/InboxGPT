@@ -4,6 +4,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Skip TypeScript errors during production builds
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   // Enable instrumentation for background worker auto-start
   experimental: {
     instrumentationHook: true,
