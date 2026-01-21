@@ -1,0 +1,12 @@
+version: '3.8'
+
+# Development docker-compose
+#
+# NOTE: Redis is NO LONGER REQUIRED!
+# Just run: npm run dev
+# That's it! Everything works in-process now.
+#
+# This file is kept for backwards compatibility but is essentially empty.
+# You can delete this file if you want.
+
+services: {}

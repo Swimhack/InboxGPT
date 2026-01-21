@@ -1,0 +1,32 @@
+# fly.toml - Fly.io configuration for InboxGPT
+# Deploy with: fly launch (first time) or fly deploy (updates)
+
+app = "inboxgpt"
+primary_region = "dfw"
+
+[build]
+  dockerfile = ".docker/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  DATABASE_URL = "/data/inboxgpt.db"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false  # Keep running for background job processing
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Persistent storage for SQLite database
+[mounts]
+  source = "inboxgpt_data"
+  destination = "/data"
+  initial_size = "1gb"
