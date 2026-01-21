@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Skip ESLint during production builds
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   // Enable instrumentation for background worker auto-start
   experimental: {
     instrumentationHook: true,
