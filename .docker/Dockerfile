@@ -41,8 +41,10 @@ RUN apk del python3 make g++
 
 # Copy built application
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./
+
+# Copy public directory if it exists (with placeholder)
+COPY --from=builder /app/public ./public
 
 # Create data directory
 RUN mkdir -p /app/data
