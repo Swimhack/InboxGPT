@@ -6,7 +6,7 @@ import { Providers } from '@/components/providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'InboxGPT - AI-Powered Unified Inbox',
+  title: 'Inbox Pro - AI-Powered Unified Inbox',
   description: 'Privacy-first, self-hostable AI-powered unified inbox platform',
 };
 

@@ -17,7 +17,7 @@ function getKey(): Buffer {
   }
 
   // Otherwise, derive a key from the string
-  const salt = Buffer.alloc(SALT_LENGTH, 'inboxgpt-salt');
+  const salt = Buffer.alloc(SALT_LENGTH, 'inboxpro-salt');
   return scryptSync(key, salt, 32);
 }
 

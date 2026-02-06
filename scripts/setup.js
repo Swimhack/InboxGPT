@@ -4,8 +4,8 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-console.log('InboxGPT Setup Script');
-console.log('=====================\n');
+console.log('Inbox Pro Setup Script');
+console.log('======================\n');
 
 // Check if .env exists
 const envPath = path.join(__dirname, '..', '.env');

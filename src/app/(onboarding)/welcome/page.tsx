@@ -45,7 +45,7 @@ export default function WelcomePage() {
         <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-primary/10 mb-2">
           <Mail className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">Welcome to InboxGPT</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Welcome to Inbox Pro</h1>
         <p className="text-muted-foreground text-lg max-w-md mx-auto">
           Your AI-powered email assistant that helps you stay organized and respond faster.
         </p>

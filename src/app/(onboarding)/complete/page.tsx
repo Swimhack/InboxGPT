@@ -152,7 +152,7 @@ export default function CompletePage() {
       {syncStatus !== 'done' && (
         <div className="text-center space-y-2 animate-in fade-in delay-500 duration-500">
           <p className="text-sm text-muted-foreground">
-            Tip: InboxGPT will continue syncing in the background
+            Tip: Inbox Pro will continue syncing in the background
           </p>
         </div>
       )}

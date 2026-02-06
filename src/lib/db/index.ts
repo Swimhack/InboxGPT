@@ -4,7 +4,7 @@ import * as schema from './schema';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
-const databaseUrl = process.env.DATABASE_URL || './data/inboxgpt.db';
+const databaseUrl = process.env.DATABASE_URL || './data/inboxpro.db';
 
 let _db: BetterSQLite3Database<typeof schema> | null = null;
 

@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
-const databaseUrl = process.env.DATABASE_URL || './data/inboxgpt.db';
+const databaseUrl = process.env.DATABASE_URL || './data/inboxpro.db';
 
 // Ensure data directory exists
 const dbDir = dirname(databaseUrl);

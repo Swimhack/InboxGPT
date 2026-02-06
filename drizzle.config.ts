@@ -5,6 +5,6 @@ export default {
   out: './drizzle',
   dialect: 'sqlite',
   dbCredentials: {
-    url: process.env.DATABASE_URL || './data/inboxgpt.db',
+    url: process.env.DATABASE_URL || './data/inboxpro.db',
   },
 } satisfies Config;

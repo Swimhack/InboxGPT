@@ -76,7 +76,7 @@ export default function RegisterPage() {
           <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
             <Mail className="h-6 w-6 text-primary-foreground" />
           </div>
-          <span className="text-xl font-bold">InboxGPT</span>
+          <span className="text-xl font-bold">Inbox Pro</span>
         </div>
         <CardTitle className="text-2xl">Create an account</CardTitle>
         <CardDescription>Enter your details to get started</CardDescription>

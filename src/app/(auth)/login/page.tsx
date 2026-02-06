@@ -49,7 +49,7 @@ export default function LoginPage() {
           <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
             <Mail className="h-6 w-6 text-primary-foreground" />
           </div>
-          <span className="text-xl font-bold">InboxGPT</span>
+          <span className="text-xl font-bold">Inbox Pro</span>
         </div>
         <CardTitle className="text-2xl">Welcome back</CardTitle>
         <CardDescription>Enter your credentials to access your inbox</CardDescription>

@@ -1,7 +1,7 @@
-# fly.toml - Fly.io configuration for InboxGPT
+# fly.toml - Fly.io configuration for Inbox Pro
 # Deploy with: fly launch (first time) or fly deploy (updates)
 
-app = "inboxgpt"
+app = "inboxpro"
 primary_region = "dfw"
 
 [build]
@@ -10,7 +10,7 @@ primary_region = "dfw"
 [env]
   NODE_ENV = "production"
   PORT = "3000"
-  DATABASE_URL = "/data/inboxgpt.db"
+  DATABASE_URL = "/data/inboxpro.db"
 
 [http_service]
   internal_port = 3000
@@ -27,6 +27,6 @@ primary_region = "dfw"
 
 # Persistent storage for SQLite database
 [mounts]
-  source = "inboxgpt_data"
+  source = "inboxpro_data"
   destination = "/data"
   initial_size = "1gb"

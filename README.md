@@ -1,4 +1,4 @@
-# InboxGPT
+# Inbox Pro
 
 Privacy-first, self-hostable AI-powered unified inbox platform.
 
@@ -67,7 +67,7 @@ fly deploy
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | No | SQLite path (default: `./data/inboxgpt.db`) |
+| `DATABASE_URL` | No | SQLite path (default: `./data/inboxpro.db`) |
 | `NEXTAUTH_SECRET` | Yes | Session encryption key |
 | `ENCRYPTION_KEY` | Yes | 64-char hex for credential encryption |
 | `ANTHROPIC_API_KEY` | Yes* | Claude API key |
