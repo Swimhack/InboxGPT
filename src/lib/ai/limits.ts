@@ -21,7 +21,7 @@ export async function getUser(userId: string) {
 export async function getUserUsage(userId: string) {
     const result = await db
         .select({
-            totalEmailsProcessed: sql<number>`sum(${aiUsage.emailsProcessed})`,
+            totalEmailsProcessed: sql<number>`sum(${aiUsage.messagesProcessed})`,
         })
         .from(aiUsage)
         .where(eq(aiUsage.userId, userId));

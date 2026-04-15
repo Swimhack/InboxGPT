@@ -189,7 +189,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
       )
     );
 
-  return result.changes;
+  return result.rowCount ?? 0;
 }
 
 // Reset stuck jobs (jobs that have been processing for too long)
@@ -205,5 +205,5 @@ export async function resetStuckJobs(processingTimeoutMs: number = 5 * 60 * 1000
       )
     );
 
-  return result.changes;
+  return result.rowCount ?? 0;
 }
