@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: inboxgpt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inboxgpt
+      POSTGRES_PASSWORD: inboxgpt
+      POSTGRES_DB: inboxgpt
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inboxgpt -d inboxgpt"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
