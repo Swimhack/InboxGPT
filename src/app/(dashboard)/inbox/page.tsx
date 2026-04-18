@@ -3,16 +3,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { EmailList } from '@/components/inbox/email-list';
 import { EmailDisplay } from '@/components/inbox/email-display';
-import { SetupWizard } from '@/components/accounts/setup-wizard';
 import { AIBrief } from '@/components/inbox/ai-brief';
 import { apiUrl } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, PlusCircle } from 'lucide-react';
+import Link from 'next/link';
 
 export default function InboxPage() {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [hasAccounts, setHasAccounts] = useState<boolean | null>(null);
+  const [hasAccounts, setHasAccounts] = useState<boolean>(true); // default true so inbox always shows
 
   const checkAccounts = useCallback(async () => {
     try {
@@ -20,11 +20,9 @@ export default function InboxPage() {
       if (res.ok) {
         const data = await res.json();
         setHasAccounts((data.accounts?.length ?? 0) > 0);
-      } else {
-        setHasAccounts(false);
       }
     } catch {
-      setHasAccounts(false);
+      // ignore — just show inbox
     }
   }, []);
 
@@ -40,31 +38,22 @@ export default function InboxPage() {
     setRefreshKey((prev) => prev + 1);
   }, []);
 
-  const handleWizardComplete = useCallback(() => {
-    setHasAccounts(true);
-    setRefreshKey((prev) => prev + 1);
-  }, []);
-
-  if (hasAccounts === null) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex gap-1.5">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="w-2 h-2 rounded-full bg-blue-300 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasAccounts) {
-    return <SetupWizard onComplete={handleWizardComplete} />;
-  }
-
   return (
     <div className="flex h-full">
       {/* Email list — full width on mobile, fixed width on desktop */}
       <div className={`${selectedEmailId ? 'hidden md:flex' : 'flex'} w-full md:w-96 border-r flex-col`}>
+        {/* Banner if no accounts connected */}
+        {!hasAccounts && (
+          <div className="p-3 border-b bg-amber-50 dark:bg-amber-950/30">
+            <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">No email accounts connected yet.</p>
+            <Button size="sm" asChild>
+              <Link href="/accounts">
+                <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+                Connect Account
+              </Link>
+            </Button>
+          </div>
+        )}
         <AIBrief />
         <EmailList
           key={refreshKey}
@@ -75,7 +64,6 @@ export default function InboxPage() {
 
       {/* Email display — full width on mobile, flex on desktop */}
       <div className={`${selectedEmailId ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
-        {/* Mobile back button */}
         {selectedEmailId && (
           <div className="md:hidden p-2 border-b">
             <Button

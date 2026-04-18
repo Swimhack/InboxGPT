@@ -61,9 +61,32 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === 'google' && user.email) {
-        const existing = await db.query.users.findFirst({
+        // Find existing user by email
+        let existing = await db.query.users.findFirst({
           where: eq(schema.users.email, user.email),
         });
+
+        if (!existing) {
+          // Check if this Google email is used as an email_account under another user
+          // If so, adopt that user's identity to preserve their data
+          const linkedAccount = await db.query.emailAccounts.findFirst({
+            where: eq(schema.emailAccounts.email, user.email),
+          });
+
+          if (linkedAccount) {
+            // Adopt the existing user that owns this email account
+            existing = await db.query.users.findFirst({
+              where: eq(schema.users.id, linkedAccount.userId),
+            });
+            // Update that user's login email to the Google email
+            if (existing) {
+              await db.update(schema.users)
+                .set({ email: user.email, name: user.name || existing.name })
+                .where(eq(schema.users.id, existing.id));
+            }
+          }
+        }
+
         if (!existing) {
           const id = generateId();
           await db.insert(schema.users).values({
