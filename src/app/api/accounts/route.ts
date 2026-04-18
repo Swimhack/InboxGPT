@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { generateId } from '@/lib/utils';
 import { encrypt, encryptCredentials } from '@/lib/crypto/encryption';
 import { z } from 'zod';
@@ -51,13 +51,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = addImapAccountSchema.parse(body);
 
-    // Check if account already exists
+    // Check if this user already connected this email
     const existing = await db.query.emailAccounts.findFirst({
-      where: eq(schema.emailAccounts.email, data.email),
+      where: and(
+        eq(schema.emailAccounts.email, data.email),
+        eq(schema.emailAccounts.userId, session.user.id),
+      ),
     });
 
     if (existing) {
-      return NextResponse.json({ error: 'Account already exists' }, { status: 400 });
+      return NextResponse.json({ error: 'You have already connected this email account' }, { status: 400 });
     }
 
     // Encrypt sensitive data
