@@ -23,20 +23,27 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      console.log('[LOGIN] Calling signIn for:', email);
       const result = await signIn('credentials', {
         email,
         password,
         redirect: false,
       });
 
+      console.log('[LOGIN] signIn result:', JSON.stringify(result));
+
       if (result?.error) {
-        setError('Invalid email or password');
+        setError('Invalid email or password (' + result.error + ')');
+      } else if (!result?.ok) {
+        setError('Login failed — see browser console.');
+        console.error('[LOGIN] Unexpected result:', result);
       } else {
-        router.push('/inbox');
-        router.refresh();
+        console.log('[LOGIN] Success, navigating to dashboard');
+        window.location.href = '/inbox/inbox';
       }
-    } catch {
-      setError('An error occurred. Please try again.');
+    } catch(err) {
+      console.error('[LOGIN] Exception:', err);
+      setError('Error: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsLoading(false);
     }

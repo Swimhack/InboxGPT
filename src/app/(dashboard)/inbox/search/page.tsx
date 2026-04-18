@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { cn, formatDate, truncate } from '@/lib/utils';
+import { cn, formatDate, truncate, apiUrl } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,7 +55,7 @@ export default function SearchPage() {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/emails/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(apiUrl(`/api/emails/search?q=${encodeURIComponent(query)}`));
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       setEmails(data.emails || []);

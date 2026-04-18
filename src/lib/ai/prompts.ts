@@ -71,6 +71,92 @@ Respond in JSON format only:
 }`;
 }
 
+export interface BriefEmailData {
+  subject: string;
+  from: string;
+  snippet: string;
+  category: string;
+  priority: string;
+  receivedAt: string;
+  account: string;
+}
+
+export function buildBriefPrompt(
+  userName: string,
+  accountEmails: string[],
+  emails: BriefEmailData[],
+  timezone?: string,
+): string {
+  const now = new Date();
+  let timeOfDay: string;
+  try {
+    const hour = parseInt(
+      new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        hour12: false,
+        timeZone: timezone || 'America/Chicago',
+      }).format(now)
+    );
+    timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  } catch {
+    timeOfDay = now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening';
+  }
+
+  if (emails.length === 0) {
+    return `You are an AI email assistant. Generate a brief JSON status for ${userName || 'the user'}.
+They have ${accountEmails.length} connected email account(s): ${accountEmails.join(', ')}.
+There are no unread emails right now. It is ${timeOfDay}.
+
+Respond in JSON format only:
+{
+  "greeting": "A short, warm greeting mentioning it's a quiet inbox",
+  "summary": "One sentence noting no pending items",
+  "sections": [],
+  "actionItems": []
+}`;
+  }
+
+  const emailList = emails
+    .map(
+      (e, i) =>
+        `${i + 1}. [${e.priority.toUpperCase()}] "${e.subject}" from ${e.from} (${e.category}, ${e.account}) — ${e.snippet?.slice(0, 120) || 'No preview'} — ${e.receivedAt}`
+    )
+    .join('\n');
+
+  return `You are an executive AI assistant creating a daily brief for ${userName || 'a busy entrepreneur'}.
+Your user is a busy entrepreneur who needs to quickly triage their inbox and focus on what matters.
+Connected accounts: ${accountEmails.join(', ')}
+Current time: ${now.toISOString()} (${timeOfDay})
+Unread emails (${emails.length}):
+
+${emailList}
+
+Create a concise, actionable brief that helps them decide what to do first. Think like a chief of staff:
+- Lead with what's urgent or time-sensitive
+- Group by theme: deals, clients, operations, team, finance, etc.
+- Extract concrete action items with deadlines when mentioned
+- Flag anything that needs a reply today
+- Note patterns (e.g. "3 follow-ups pending from last week")
+- Keep summaries tight — one sentence max per email
+
+Respond in JSON format only:
+{
+  "greeting": "Short, energizing ${timeOfDay} greeting for ${userName || 'the user'}",
+  "summary": "Punchy overview (e.g. '12 unread — 2 need replies today, 1 deal update')",
+  "sections": [
+    {
+      "title": "Section name (e.g. 'Reply Today', 'Deal Flow', 'Team Updates', 'FYI')",
+      "items": [
+        { "subject": "Email subject", "from": "Sender name", "summary": "One-sentence actionable summary", "priority": "urgent|high|normal|low" }
+      ]
+    }
+  ],
+  "actionItems": [
+    { "text": "Specific action to take", "source": "Email/sender this relates to", "urgency": "high|medium|low" }
+  ]
+}`;
+}
+
 export function buildThreadSummaryPrompt(
   emails: Array<{ from: string; subject: string; body: string; date: Date }>
 ): string {

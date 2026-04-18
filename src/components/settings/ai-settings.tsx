@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +28,7 @@ export function AISettings({ hasAnthropicKey, hasOpenaiKey, usageInfo }: AISetti
     const handleSave = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/settings/keys', {
+            const res = await fetch(apiUrl('/api/settings/keys'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

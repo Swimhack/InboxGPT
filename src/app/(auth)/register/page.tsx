@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -36,34 +37,43 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/auth/register', {
+      const registerUrl = apiUrl('/api/auth/register');
+      console.log('[REGISTER] POST to:', registerUrl);
+      const res = await fetch(registerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name }),
       });
 
       const data = await res.json();
+      console.log('[REGISTER] API response:', res.status, JSON.stringify(data));
 
       if (!res.ok) {
         setError(data.error || 'Registration failed');
         return;
       }
 
-      // Auto sign in after registration
+      console.log('[REGISTER] Account created, calling signIn...');
       const result = await signIn('credentials', {
         email,
         password,
         redirect: false,
       });
 
+      console.log('[REGISTER] signIn result:', JSON.stringify(result));
+
       if (result?.error) {
-        setError('Registration successful but login failed. Please try logging in.');
+        setError('Registered but sign-in failed: ' + result.error + ' — try logging in.');
+      } else if (!result?.ok) {
+        setError('Unexpected result — see browser console.');
+        console.error('[REGISTER] Unexpected:', result);
       } else {
-        router.push('/inbox');
-        router.refresh();
+        console.log('[REGISTER] Success, navigating to dashboard');
+        window.location.href = '/inbox/inbox';
       }
-    } catch {
-      setError('An error occurred. Please try again.');
+    } catch(err) {
+      console.error('[REGISTER] Exception:', err);
+      setError('Error: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsLoading(false);
     }

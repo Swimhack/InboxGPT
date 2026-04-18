@@ -1,7 +1,7 @@
 # fly.toml - Fly.io configuration for Inbox Pro
 # Deploy with: fly launch (first time) or fly deploy (updates)
 
-app = "inboxpro"
+app = "inboxgpt"
 primary_region = "dfw"
 
 [build]

@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -69,7 +70,7 @@ export default function ConnectEmailPage() {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/accounts', {
+      const res = await fetch(apiUrl('/api/accounts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

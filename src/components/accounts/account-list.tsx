@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,7 +40,7 @@ export function AccountList() {
 
   const fetchAccounts = async () => {
     try {
-      const res = await fetch('/api/accounts');
+      const res = await fetch(apiUrl('/api/accounts'));
       if (!res.ok) throw new Error('Failed to fetch accounts');
       const data = await res.json();
       setAccounts(data.accounts || []);
@@ -59,7 +60,7 @@ export function AccountList() {
     setSyncingAccounts((prev) => new Set(prev).add(accountId));
 
     try {
-      const res = await fetch(`/api/accounts/${accountId}/sync`, {
+      const res = await fetch(apiUrl(`/api/accounts/${accountId}/sync`), {
         method: 'POST',
       });
 
@@ -69,7 +70,7 @@ export function AccountList() {
 
       // Poll for sync completion
       const pollInterval = setInterval(async () => {
-        const statusRes = await fetch(`/api/accounts/${accountId}`);
+        const statusRes = await fetch(apiUrl(`/api/accounts/${accountId}`));
         if (statusRes.ok) {
           const data = await statusRes.json();
           if (data.account?.syncStatus !== 'syncing') {
@@ -113,7 +114,7 @@ export function AccountList() {
     }
 
     try {
-      const res = await fetch(`/api/accounts/${accountId}`, {
+      const res = await fetch(apiUrl(`/api/accounts/${accountId}`), {
         method: 'DELETE',
       });
 

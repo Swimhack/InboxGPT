@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { cn, formatDate, truncate } from '@/lib/utils';
+import { cn, formatDate, truncate, apiUrl } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -69,7 +69,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
       if (accountId) params.set('accountId', accountId);
       if (category) params.set('category', category);
 
-      const res = await fetch(`/api/emails?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/emails?${params.toString()}`));
       if (!res.ok) throw new Error('Failed to fetch emails');
 
       const data = await res.json();
@@ -109,7 +109,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
   const handleStar = async (e: React.MouseEvent, emailId: string, currentStarred: boolean) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/emails/${emailId}`, {
+      const res = await fetch(apiUrl(`/api/emails/${emailId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isStarred: !currentStarred }),
@@ -136,7 +136,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
 
     try {
       const updates = Array.from(selectedEmails).map((id) =>
-        fetch(`/api/emails/${id}`, {
+        fetch(apiUrl(`/api/emails/${id}`), {
           method: action === 'delete' ? 'DELETE' : 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: action === 'archive' ? JSON.stringify({ isArchived: true }) : undefined,

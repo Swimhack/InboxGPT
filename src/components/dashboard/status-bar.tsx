@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export function StatusBar() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch('/api/status');
+        const res = await fetch(apiUrl('/api/status'));
         if (res.ok) {
           const data = await res.json();
           setStatus(data);
@@ -123,7 +124,7 @@ export function StatusIndicator() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch('/api/status');
+        const res = await fetch(apiUrl('/api/status'));
         if (res.ok) {
           setStatus(await res.json());
         }

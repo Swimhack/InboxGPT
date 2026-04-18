@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
@@ -49,7 +50,7 @@ export function Header({ user }: HeaderProps) {
   const handleSyncAll = useCallback(async () => {
     setIsSyncing(true);
     try {
-      const res = await fetch('/api/sync/all', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/sync/all'), { method: 'POST' });
       if (!res.ok) throw new Error('Failed to sync');
       toast({ title: 'Sync started', description: 'Syncing all accounts...' });
     } catch (error) {

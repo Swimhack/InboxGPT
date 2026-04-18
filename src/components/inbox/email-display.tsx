@@ -29,6 +29,8 @@ import {
 import { AISummaryPanel } from '@/components/ai/summary-panel';
 import { QuickReplies } from '@/components/ai/quick-replies';
 import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
+import { apiUrl } from '@/lib/utils';
 
 interface EmailDetails {
   id: string;
@@ -70,6 +72,7 @@ interface EmailDisplayProps {
 
 export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [email, setEmail] = useState<EmailDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(true);
@@ -83,7 +86,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
     const fetchEmail = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(`/api/emails/${emailId}`);
+        const res = await fetch(apiUrl(`/api/emails/${emailId}`));
         if (!res.ok) throw new Error('Failed to fetch email');
 
         const data = await res.json();
@@ -107,7 +110,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
     if (!email) return;
 
     try {
-      const res = await fetch(`/api/emails/${email.id}`, {
+      const res = await fetch(apiUrl(`/api/emails/${email.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isStarred: !email.isStarred }),
@@ -130,7 +133,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
     if (!email) return;
 
     try {
-      const res = await fetch(`/api/emails/${email.id}`, {
+      const res = await fetch(apiUrl(`/api/emails/${email.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isArchived: true }),
@@ -153,7 +156,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
     if (!email) return;
 
     try {
-      const res = await fetch(`/api/emails/${email.id}`, {
+      const res = await fetch(apiUrl(`/api/emails/${email.id}`), {
         method: 'DELETE',
       });
 
@@ -336,15 +339,51 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
         {/* Reply Actions */}
         <div className="p-4 border-t">
           <div className="flex items-center gap-2">
-            <Button>
+            <Button
+              onClick={() => {
+                const params = new URLSearchParams({
+                  replyTo: email.fromAddress,
+                  subject: `Re: ${email.subject || ''}`,
+                  accountId: email.accountId,
+                  inReplyTo: email.messageId,
+                });
+                router.push(`/inbox/inbox/compose?${params.toString()}`);
+              }}
+            >
               <Reply className="mr-2 h-4 w-4" />
               Reply
             </Button>
-            <Button variant="outline">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const allAddresses = [
+                  email.fromAddress,
+                  ...(parseAddresses(email.toAddresses).map(a => a.address)),
+                  ...(parseAddresses(email.ccAddresses).map(a => a.address)),
+                ].filter((v, i, arr) => arr.indexOf(v) === i);
+                const params = new URLSearchParams({
+                  replyTo: allAddresses.join(','),
+                  subject: `Re: ${email.subject || ''}`,
+                  accountId: email.accountId,
+                  inReplyTo: email.messageId,
+                });
+                router.push(`/inbox/inbox/compose?${params.toString()}`);
+              }}
+            >
               <ReplyAll className="mr-2 h-4 w-4" />
               Reply All
             </Button>
-            <Button variant="outline">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  subject: `Fwd: ${email.subject || ''}`,
+                  accountId: email.accountId,
+                  body: `\n\n---------- Forwarded message ----------\nFrom: ${email.fromName || email.fromAddress}\nDate: ${new Date(email.receivedAt).toLocaleString()}\nSubject: ${email.subject || ''}\n\n${email.bodyText || ''}`,
+                });
+                router.push(`/inbox/inbox/compose?${params.toString()}`);
+              }}
+            >
               <Forward className="mr-2 h-4 w-4" />
               Forward
             </Button>
@@ -369,7 +408,20 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
             <div className="p-3 space-y-4">
               <AISummaryPanel summary={email.aiSummary} />
               <Separator />
-              <QuickReplies replies={suggestedReplies} />
+              <QuickReplies
+                replies={suggestedReplies}
+                onSelect={(reply) => {
+                  if (!email) return;
+                  const params = new URLSearchParams({
+                    replyTo: email.fromAddress,
+                    subject: `Re: ${email.subject || ''}`,
+                    body: reply,
+                    accountId: email.accountId,
+                    inReplyTo: email.messageId,
+                  });
+                  router.push(`/inbox/inbox/compose?${params.toString()}`);
+                }}
+              />
             </div>
           </ScrollArea>
         )}

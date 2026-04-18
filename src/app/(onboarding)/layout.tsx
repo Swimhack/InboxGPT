@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
+import { db, schema } from '@/lib/db';
+import { eq } from 'drizzle-orm';
 
 export default async function OnboardingLayout({
   children,
@@ -11,6 +13,27 @@ export default async function OnboardingLayout({
   // Must be logged in to access onboarding
   if (!session?.user) {
     redirect('/login');
+  }
+
+  // Returning users with accounts skip onboarding
+  const accounts = await db.query.emailAccounts.findMany({
+    where: eq(schema.emailAccounts.userId, session.user.id),
+    columns: { id: true },
+  });
+
+  if (accounts.length > 0) {
+    // Auto-complete onboarding if not already done
+    const user = await db.query.users.findFirst({
+      where: eq(schema.users.id, session.user.id),
+      columns: { onboardingCompletedAt: true },
+    });
+    if (!user?.onboardingCompletedAt) {
+      await db
+        .update(schema.users)
+        .set({ onboardingCompletedAt: new Date() })
+        .where(eq(schema.users.id, session.user.id));
+    }
+    redirect('/inbox');
   }
 
   return (

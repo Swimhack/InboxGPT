@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -45,7 +46,7 @@ export default function CompletePage() {
     }
     if (syncProgress >= 100 && syncStatus === 'processing') {
       // Mark onboarding complete
-      fetch('/api/user/onboarding', { method: 'POST' }).catch(console.error);
+      fetch(apiUrl('/api/user/onboarding'), { method: 'POST' }).catch(console.error);
       setTimeout(() => setSyncStatus('done'), 500);
     }
   }, [syncProgress, syncStatus]);
@@ -56,7 +57,7 @@ export default function CompletePage() {
   }, []);
 
   const handleGoToInbox = () => {
-    router.push('/inbox');
+    window.location.href = '/inbox/inbox';
   };
 
   return (

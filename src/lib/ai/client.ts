@@ -19,6 +19,20 @@ export interface QuickReplyResult {
   replies: string[];
 }
 
+export interface BriefResult {
+  greeting: string;
+  summary: string;
+  sections: Array<{
+    title: string;
+    items: Array<{ subject: string; from: string; summary: string; priority: string }>;
+  }>;
+  actionItems: Array<{
+    text: string;
+    source: string;
+    urgency: 'high' | 'medium' | 'low';
+  }>;
+}
+
 class AnthropicClient {
   private client: Anthropic;
   private model: string;
@@ -111,6 +125,37 @@ Respond in JSON format:
       return { replies: parsed.replies };
     } catch {
       return { replies: [] };
+    }
+  }
+
+  async generateBrief(prompt: string): Promise<BriefResult> {
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response type');
+    }
+
+    try {
+      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content.text);
+      return {
+        greeting: parsed.greeting || '',
+        summary: parsed.summary || '',
+        sections: parsed.sections || [],
+        actionItems: parsed.actionItems || [],
+      };
+    } catch {
+      return {
+        greeting: 'Here is your inbox brief.',
+        summary: '',
+        sections: [],
+        actionItems: [],
+      };
     }
   }
 }
@@ -211,6 +256,37 @@ Respond in JSON format:
       return { replies: [] };
     }
   }
+
+  async generateBrief(prompt: string): Promise<BriefResult> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('Empty response');
+    }
+
+    try {
+      const parsed = JSON.parse(content);
+      return {
+        greeting: parsed.greeting || '',
+        summary: parsed.summary || '',
+        sections: parsed.sections || [],
+        actionItems: parsed.actionItems || [],
+      };
+    } catch {
+      return {
+        greeting: 'Here is your inbox brief.',
+        summary: '',
+        sections: [],
+        actionItems: [],
+      };
+    }
+  }
 }
 
 export class AIClient {
@@ -246,6 +322,16 @@ export class AIClient {
     }
     if (this.openai) {
       return this.openai.generateReplies(subject, body, senderName);
+    }
+    throw new Error('No AI client configured');
+  }
+
+  async generateBrief(prompt: string): Promise<BriefResult> {
+    if (this.anthropic) {
+      return this.anthropic.generateBrief(prompt);
+    }
+    if (this.openai) {
+      return this.openai.generateBrief(prompt);
     }
     throw new Error('No AI client configured');
   }
