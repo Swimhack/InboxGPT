@@ -57,7 +57,7 @@ export default function CompletePage() {
   }, []);
 
   const handleGoToInbox = () => {
-    window.location.href = '/inbox/inbox';
+    window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/inbox`;
   };
 
   return (

@@ -39,7 +39,7 @@ export default function LoginPage() {
         console.error('[LOGIN] Unexpected result:', result);
       } else {
         console.log('[LOGIN] Success, navigating to dashboard');
-        window.location.href = '/inbox/inbox';
+        window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/inbox`;
       }
     } catch(err) {
       console.error('[LOGIN] Exception:', err);

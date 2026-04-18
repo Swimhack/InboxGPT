@@ -347,7 +347,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
                   accountId: email.accountId,
                   inReplyTo: email.messageId,
                 });
-                router.push(`/inbox/inbox/compose?${params.toString()}`);
+                router.push(`/inbox/compose?${params.toString()}`);
               }}
             >
               <Reply className="mr-2 h-4 w-4" />
@@ -367,7 +367,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
                   accountId: email.accountId,
                   inReplyTo: email.messageId,
                 });
-                router.push(`/inbox/inbox/compose?${params.toString()}`);
+                router.push(`/inbox/compose?${params.toString()}`);
               }}
             >
               <ReplyAll className="mr-2 h-4 w-4" />
@@ -381,7 +381,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
                   accountId: email.accountId,
                   body: `\n\n---------- Forwarded message ----------\nFrom: ${email.fromName || email.fromAddress}\nDate: ${new Date(email.receivedAt).toLocaleString()}\nSubject: ${email.subject || ''}\n\n${email.bodyText || ''}`,
                 });
-                router.push(`/inbox/inbox/compose?${params.toString()}`);
+                router.push(`/inbox/compose?${params.toString()}`);
               }}
             >
               <Forward className="mr-2 h-4 w-4" />
@@ -419,7 +419,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
                     accountId: email.accountId,
                     inReplyTo: email.messageId,
                   });
-                  router.push(`/inbox/inbox/compose?${params.toString()}`);
+                  router.push(`/inbox/compose?${params.toString()}`);
                 }}
               />
             </div>

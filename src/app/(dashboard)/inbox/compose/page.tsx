@@ -104,7 +104,7 @@ export default function ComposePage() {
         description: 'Your email has been sent successfully',
       });
 
-      window.location.href = '/inbox/inbox';
+      window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/inbox`;
     } catch (error) {
       toast({
         title: 'Error',
