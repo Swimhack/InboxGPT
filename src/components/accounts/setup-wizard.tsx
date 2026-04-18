@@ -220,11 +220,11 @@ export function SetupWizard({ onComplete, onCancel, compact = false }: SetupWiza
 
   const wrapperClass = compact
     ? 'w-full'
-    : 'min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 flex items-center justify-center p-4';
+    : 'min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 flex items-center justify-center p-4';
 
   const cardClass = compact
     ? 'w-full'
-    : 'w-full max-w-lg bg-white rounded-3xl shadow-2xl shadow-slate-200/60 overflow-hidden';
+    : 'w-full max-w-lg bg-white dark:bg-card rounded-3xl shadow-2xl shadow-slate-200/60 dark:shadow-slate-900/60 overflow-hidden';
 
   return (
     <div className={wrapperClass}>

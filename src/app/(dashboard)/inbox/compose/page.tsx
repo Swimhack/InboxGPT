@@ -104,7 +104,7 @@ export default function ComposePage() {
         description: 'Your email has been sent successfully',
       });
 
-      window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/inbox`;
+      router.push('/inbox');
     } catch (error) {
       toast({
         title: 'Error',
@@ -125,7 +125,7 @@ export default function ComposePage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto overflow-auto h-full">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/inbox">
@@ -184,7 +184,7 @@ export default function ComposePage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cc">CC</Label>
                   <Input

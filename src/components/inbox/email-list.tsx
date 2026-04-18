@@ -185,6 +185,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
       <div className="p-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Checkbox
+            aria-label="Select all emails"
             checked={emails.length > 0 && selectedEmails.size === emails.length}
             onCheckedChange={(checked) => {
               if (checked) {
@@ -201,15 +202,15 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
         <div className="flex items-center gap-1">
           {selectedEmails.size > 0 && (
             <>
-              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('archive')}>
+              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('archive')} aria-label="Archive selected">
                 <Archive className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('delete')}>
+              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('delete')} aria-label="Delete selected">
                 <Trash2 className="h-4 w-4" />
               </Button>
             </>
           )}
-          <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
+          <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} aria-label="Refresh emails">
             <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
           </Button>
         </div>
@@ -230,9 +231,17 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
             {emails.map((email) => (
               <div
                 key={email.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectEmail?.(email.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectEmail?.(email.id);
+                  }
+                }}
                 className={cn(
-                  'flex items-start gap-3 p-3 cursor-pointer transition-colors',
+                  'flex items-start gap-3 p-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                   selectedEmailId === email.id ? 'bg-secondary' : 'hover:bg-muted/50',
                   !email.isRead && 'bg-primary/5'
                 )}
@@ -244,8 +253,9 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
                   />
                   <button
                     onClick={(e) => handleStar(e, email.id, email.isStarred)}
+                    aria-label={email.isStarred ? 'Unstar email' : 'Star email'}
                     className={cn(
-                      'hover:text-yellow-500 transition-colors',
+                      'hover:text-yellow-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded',
                       email.isStarred ? 'text-yellow-500' : 'text-muted-foreground'
                     )}
                   >

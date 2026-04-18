@@ -31,6 +31,7 @@ import { QuickReplies } from '@/components/ai/quick-replies';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { apiUrl } from '@/lib/utils';
+import DOMPurify from 'dompurify';
 
 interface EmailDetails {
   id: string;
@@ -104,7 +105,7 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
     };
 
     fetchEmail();
-  }, [emailId]);
+  }, [emailId, toast]);
 
   const handleStar = async () => {
     if (!email) return;
@@ -245,23 +246,35 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
           <div className="flex items-start justify-between mb-4">
             <h1 className="text-xl font-semibold">{email.subject || '(No Subject)'}</h1>
             <div className="flex items-center gap-1">
+              {!showAIPanel && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowAIPanel(true)}
+                  aria-label="Show AI panel"
+                  className="hidden lg:inline-flex"
+                >
+                  <Sparkles className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleStar}
+                aria-label={email.isStarred ? 'Unstar email' : 'Star email'}
                 className={email.isStarred ? 'text-yellow-500' : ''}
               >
                 <Star className={`h-4 w-4 ${email.isStarred ? 'fill-current' : ''}`} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={handleArchive}>
+              <Button variant="ghost" size="icon" onClick={handleArchive} aria-label="Archive email">
                 <Archive className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={handleDelete}>
+              <Button variant="ghost" size="icon" onClick={handleDelete} aria-label="Delete email">
                 <Trash2 className="h-4 w-4" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
+                  <Button variant="ghost" size="icon" aria-label="More actions">
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -309,8 +322,8 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
         <ScrollArea className="flex-1 p-4">
           {email.bodyHtml ? (
             <div
-              className="prose prose-sm max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
+              className="prose prose-sm max-w-none dark:prose-invert break-words"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(email.bodyHtml, { FORBID_TAGS: ['style', 'script', 'iframe', 'form'], FORBID_ATTR: ['onerror', 'onload', 'onclick'] }) }}
             />
           ) : (
             <pre className="whitespace-pre-wrap font-sans text-sm">{email.bodyText || 'No content'}</pre>
@@ -337,8 +350,8 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
         </ScrollArea>
 
         {/* Reply Actions */}
-        <div className="p-4 border-t">
-          <div className="flex items-center gap-2">
+        <div className="p-3 sm:p-4 border-t">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={() => {
                 const params = new URLSearchParams({
@@ -391,19 +404,24 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
         </div>
       </div>
 
-      {/* AI Panel */}
-      <div className="w-80 border-l flex flex-col bg-muted/30">
-        <div className="p-3 border-b flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="font-medium text-sm">AI Assistant</span>
+      {/* AI Panel — hidden on mobile, toggleable on desktop */}
+      {showAIPanel && (
+        <div className="hidden lg:flex w-80 border-l flex-col bg-muted/30">
+          <div className="p-3 border-b flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="font-medium text-sm">AI Assistant</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowAIPanel(false)}
+              aria-label="Close AI panel"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setShowAIPanel(!showAIPanel)}>
-            {showAIPanel ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </div>
 
-        {showAIPanel && (
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-4">
               <AISummaryPanel summary={email.aiSummary} />
@@ -424,8 +442,8 @@ export function EmailDisplay({ emailId, onEmailUpdated }: EmailDisplayProps) {
               />
             </div>
           </ScrollArea>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

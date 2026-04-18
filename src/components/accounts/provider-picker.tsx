@@ -266,7 +266,7 @@ export function ProviderPicker({ onSelect }: ProviderPickerProps) {
       </div>
 
       {/* Provider grid */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {filtered.map((provider) => (
           <button
             key={provider.id}
