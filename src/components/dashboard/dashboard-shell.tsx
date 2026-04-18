@@ -17,7 +17,7 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
           <Header user={user} />
           <StatusBar />
-          <main className="flex-1 overflow-hidden">{children}</main>
+          <main className="flex-1 overflow-auto">{children}</main>
         </div>
       </div>
     </SidebarProvider>
