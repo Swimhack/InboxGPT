@@ -61,9 +61,25 @@ export function decryptJSON<T>(encryptedBuffer: Buffer): T {
 }
 
 // Utility for encrypting credentials object
+
+/** Stored in credentialsEncrypted for IMAP/SMTP accounts */
 export interface ImapCredentials {
   username: string;
   password: string;
+  imapHost: string;
+  imapPort: number;
+  imapSecure: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+}
+
+/** Stored in credentialsEncrypted for OAuth accounts (Gmail, Outlook) */
+export interface OAuthCredentials {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  scopes?: string[];
 }
 
 export interface OAuthTokens {

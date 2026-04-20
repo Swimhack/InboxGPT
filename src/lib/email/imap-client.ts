@@ -1,6 +1,6 @@
 import { ImapFlow } from 'imapflow';
-import { simpleParser, ParsedMail } from 'mailparser';
-import { decrypt, decryptCredentials, decryptOAuthTokens } from '@/lib/crypto/encryption';
+import { simpleParser } from 'mailparser';
+import { decryptJSON, ImapCredentials, OAuthCredentials } from '@/lib/crypto/encryption';
 import type { EmailAccount } from '@/lib/db/schema';
 
 export interface EmailMessage {
@@ -48,49 +48,44 @@ export class ImapClient {
     secure: boolean;
     auth: { user: string; pass?: string; accessToken?: string };
   }> {
-    if (this.account.providerType === 'imap') {
-      if (!this.account.imapHost || !this.account.encryptedCredentials) {
-        throw new Error('IMAP account missing host or credentials');
+    if (this.account.provider === 'imap') {
+      if (!this.account.credentialsEncrypted) {
+        throw new Error('IMAP account missing credentials');
       }
 
-      const host = decrypt(this.account.imapHost);
-      const credentials = decryptCredentials(this.account.encryptedCredentials);
+      const creds = decryptJSON<ImapCredentials>(this.account.credentialsEncrypted);
 
       return {
-        host,
-        port: this.account.imapPort || 993,
-        secure: this.account.imapSecure ?? true,
+        host: creds.imapHost,
+        port: creds.imapPort || 993,
+        secure: creds.imapSecure ?? true,
         auth: {
-          user: credentials.username,
-          pass: credentials.password,
+          user: creds.username,
+          pass: creds.password,
         },
       };
     }
 
-    if (this.account.providerType === 'gmail' || this.account.providerType === 'outlook') {
-      if (!this.account.encryptedAccessToken || !this.account.encryptedRefreshToken) {
-        throw new Error('OAuth account missing tokens');
+    if (this.account.provider === 'gmail' || this.account.provider === 'outlook') {
+      if (!this.account.credentialsEncrypted) {
+        throw new Error('OAuth account missing credentials');
       }
 
-      const tokens = decryptOAuthTokens(
-        this.account.encryptedAccessToken,
-        this.account.encryptedRefreshToken
-      );
-
-      const host = this.account.providerType === 'gmail' ? 'imap.gmail.com' : 'outlook.office365.com';
+      const creds = decryptJSON<OAuthCredentials>(this.account.credentialsEncrypted);
+      const host = this.account.provider === 'gmail' ? 'imap.gmail.com' : 'outlook.office365.com';
 
       return {
         host,
         port: 993,
         secure: true,
         auth: {
-          user: this.account.email,
-          accessToken: tokens.accessToken,
+          user: this.account.externalAccountId,
+          accessToken: creds.accessToken,
         },
       };
     }
 
-    throw new Error(`Unsupported provider type: ${this.account.providerType}`);
+    throw new Error(`Unsupported provider type: ${this.account.provider}`);
   }
 
   async connect(): Promise<void> {
@@ -147,9 +142,12 @@ export class ImapClient {
       })) {
         if (count >= limit) break;
 
+        const source = message.source;
+        if (!source) continue;
+
         try {
-          const parsed = await simpleParser(message.source);
-          const email = this.parseEmail(message.uid, parsed, message.flags);
+          const parsed = await simpleParser(source as Parameters<typeof simpleParser>[0]);
+          const email = this.parseEmail(message.uid, parsed, message.flags ?? new Set<string>());
           messages.push(email);
           count++;
         } catch (parseError) {
@@ -163,8 +161,8 @@ export class ImapClient {
     }
   }
 
-  private parseEmail(uid: number, parsed: ParsedMail, flags: Set<string>): EmailMessage {
-    const from = parsed.from?.value[0] || { address: 'unknown@unknown.com' };
+  private parseEmail(uid: number, parsed: Awaited<ReturnType<typeof simpleParser>>, flags: Set<string>): EmailMessage {
+    const from = parsed.from?.value[0] ?? { name: undefined, address: 'unknown@unknown.com' };
     const to = parsed.to
       ? Array.isArray(parsed.to)
         ? parsed.to.flatMap((t) => t.value)
@@ -181,9 +179,9 @@ export class ImapClient {
       messageId: parsed.messageId || `${uid}@unknown`,
       threadId: parsed.references?.[0] || parsed.inReplyTo || undefined,
       subject: parsed.subject || '(No Subject)',
-      from: { name: from.name, address: from.address || 'unknown@unknown.com' },
-      to: to.map((t) => ({ name: t.name, address: t.address || '' })),
-      cc: cc?.map((c) => ({ name: c.name, address: c.address || '' })),
+      from: { name: (from as { name?: string; address: string }).name, address: from.address || 'unknown@unknown.com' },
+      to: to.map((t) => ({ name: (t as { name?: string; address?: string }).name, address: t.address || '' })),
+      cc: cc?.map((c) => ({ name: (c as { name?: string; address?: string }).name, address: c.address || '' })),
       date: parsed.date || new Date(),
       bodyText: parsed.text || undefined,
       bodyHtml: parsed.html || undefined,
@@ -265,11 +263,8 @@ export class ImapClient {
   async listFolders(): Promise<Array<{ path: string; name: string }>> {
     if (!this.client) throw new Error('Not connected');
 
-    const folders: Array<{ path: string; name: string }> = [];
-    for await (const folder of this.client.list()) {
-      folders.push({ path: folder.path, name: folder.name });
-    }
-    return folders;
+    const list = await this.client.list();
+    return list.map((folder) => ({ path: folder.path, name: folder.name }));
   }
 
   async getMailboxStatus(folder: string): Promise<{ messages: number; unseen: number }> {

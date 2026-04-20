@@ -1,5 +1,5 @@
 import nodemailer, { Transporter } from 'nodemailer';
-import { decrypt, decryptCredentials, decryptOAuthTokens } from '@/lib/crypto/encryption';
+import { decryptJSON, ImapCredentials, OAuthCredentials } from '@/lib/crypto/encryption';
 import type { EmailAccount } from '@/lib/db/schema';
 
 export interface SendEmailOptions {
@@ -34,57 +34,50 @@ export class SmtpClient {
   }
 
   private async getTransportConfig(): Promise<nodemailer.TransportOptions> {
-    if (this.account.providerType === 'imap') {
-      if (!this.account.smtpHost || !this.account.encryptedCredentials) {
+    if (this.account.provider === 'imap') {
+      if (!this.account.credentialsEncrypted) {
         throw new Error('SMTP settings not configured');
       }
 
-      const host = decrypt(this.account.smtpHost);
-      const credentials = decryptCredentials(this.account.encryptedCredentials);
+      const creds = decryptJSON<ImapCredentials>(this.account.credentialsEncrypted);
 
       return {
-        host,
-        port: this.account.smtpPort || 587,
-        secure: this.account.smtpSecure ?? false,
+        host: creds.smtpHost,
+        port: creds.smtpPort || 587,
+        secure: creds.smtpSecure ?? false,
         auth: {
-          user: credentials.username,
-          pass: credentials.password,
+          user: creds.username,
+          pass: creds.password,
         },
       } as nodemailer.TransportOptions;
     }
 
-    if (this.account.providerType === 'gmail') {
-      if (!this.account.encryptedAccessToken || !this.account.encryptedRefreshToken) {
-        throw new Error('OAuth tokens not configured');
+    if (this.account.provider === 'gmail') {
+      if (!this.account.credentialsEncrypted) {
+        throw new Error('OAuth credentials not configured');
       }
 
-      const tokens = decryptOAuthTokens(
-        this.account.encryptedAccessToken,
-        this.account.encryptedRefreshToken
-      );
+      const creds = decryptJSON<OAuthCredentials>(this.account.credentialsEncrypted);
 
       return {
         service: 'gmail',
         auth: {
           type: 'OAuth2',
-          user: this.account.email,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
+          user: this.account.externalAccountId,
+          accessToken: creds.accessToken,
+          refreshToken: creds.refreshToken,
           clientId: process.env.GOOGLE_CLIENT_ID,
           clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         },
       } as nodemailer.TransportOptions;
     }
 
-    if (this.account.providerType === 'outlook') {
-      if (!this.account.encryptedAccessToken || !this.account.encryptedRefreshToken) {
-        throw new Error('OAuth tokens not configured');
+    if (this.account.provider === 'outlook') {
+      if (!this.account.credentialsEncrypted) {
+        throw new Error('OAuth credentials not configured');
       }
 
-      const tokens = decryptOAuthTokens(
-        this.account.encryptedAccessToken,
-        this.account.encryptedRefreshToken
-      );
+      const creds = decryptJSON<OAuthCredentials>(this.account.credentialsEncrypted);
 
       return {
         host: 'smtp.office365.com',
@@ -92,13 +85,13 @@ export class SmtpClient {
         secure: false,
         auth: {
           type: 'OAuth2',
-          user: this.account.email,
-          accessToken: tokens.accessToken,
+          user: this.account.externalAccountId,
+          accessToken: creds.accessToken,
         },
       } as nodemailer.TransportOptions;
     }
 
-    throw new Error(`Unsupported provider type: ${this.account.providerType}`);
+    throw new Error(`Unsupported provider type: ${this.account.provider}`);
   }
 
   async sendEmail(options: SendEmailOptions): Promise<{ messageId: string }> {
@@ -106,8 +99,9 @@ export class SmtpClient {
       throw new Error('SMTP client not connected');
     }
 
+    const fromDisplay = this.account.displayName || this.account.externalAccountId;
     const mailOptions = {
-      from: `${this.account.displayName || this.account.email} <${this.account.email}>`,
+      from: `${fromDisplay} <${this.account.externalAccountId}>`,
       to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
       cc: options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined,
       bcc: options.bcc ? (Array.isArray(options.bcc) ? options.bcc.join(', ') : options.bcc) : undefined,
