@@ -5,6 +5,9 @@ import { db, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { addEmailSyncJob } from '@/lib/queue';
 import { z } from 'zod';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+const SYNC_RATE_LIMIT = { limit: 10, windowMs: 60_000 } as const;
 
 const syncSchema = z.object({
   accountId: z.string().uuid(),
@@ -16,6 +19,15 @@ export async function POST(request: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const rl = checkRateLimit(`sync:${session.user.id}`, SYNC_RATE_LIMIT);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too Many Requests' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   const workspace = await getWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: 'No workspace' }, { status: 400 });
@@ -60,6 +72,15 @@ export async function GET() {
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const rl = checkRateLimit(`sync:${session.user.id}`, SYNC_RATE_LIMIT);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too Many Requests' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   const workspace = await getWorkspace();
   if (!workspace) {
     return NextResponse.json({ accounts: [] });
