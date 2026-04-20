@@ -1,15 +1,12 @@
 'use client';
 
-import { useState, useCallback, use } from 'react';
+import { useState, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { EmailList } from '@/components/inbox/email-list';
 import { EmailDisplay } from '@/components/inbox/email-display';
 
-interface CategoryPageProps {
-  params: Promise<{ category: string }>;
-}
-
-export default function CategoryPage({ params }: CategoryPageProps) {
-  const { category } = use(params);
+export default function CategoryPage() {
+  const { category } = useParams<{ category: string }>();
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 

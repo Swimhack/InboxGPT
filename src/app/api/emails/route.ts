@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { getWorkspace } from '@/lib/auth/workspace';
 import { db, schema } from '@/lib/db';
-import { eq, desc, and, like, or } from 'drizzle-orm';
+import { eq, desc, and, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 const querySchema = z.object({
   page: z.string().optional().default('1').transform((v) => parseInt(v, 10)),
   limit: z.string().optional().default('50').transform((v) => parseInt(v, 10)),
   folder: z.string().optional(),
-  accountId: z.string().optional(),
+  channelAccountId: z.string().optional(),
   category: z.string().optional(),
   search: z.string().optional(),
   unread: z.string().optional().transform((v) => v === 'true'),
@@ -20,104 +21,114 @@ export async function GET(request: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({ emails: [] });
+  }
 
   const { searchParams } = new URL(request.url);
   const params = querySchema.parse(Object.fromEntries(searchParams.entries()));
 
-  const conditions = [eq(schema.emails.userId, session.user.id)];
+  const conditions = [eq(schema.messages.workspaceId, workspace.workspaceId)];
 
-  if (params.accountId) {
-    conditions.push(eq(schema.emails.accountId, params.accountId));
+  if (params.channelAccountId) {
+    conditions.push(eq(schema.messages.channelAccountId, params.channelAccountId));
   }
 
-  // Handle special folder types
   if (params.folder) {
     switch (params.folder) {
       case 'starred':
-        conditions.push(eq(schema.emails.isStarred, true));
-        break;
-      case 'archive':
-        conditions.push(eq(schema.emails.isArchived, true));
+        conditions.push(eq(schema.messages.isStarred, true));
         break;
       case 'trash':
-        conditions.push(eq(schema.emails.folder, 'trash'));
+        conditions.push(eq(schema.messages.isDeleted, true));
         break;
       case 'sent':
-        conditions.push(eq(schema.emails.folder, 'sent'));
+        conditions.push(eq(schema.messages.direction, 'outbound'));
+        break;
+      case 'archive':
+        // Track A messages don't have an isArchived — for now, no results.
+        conditions.push(sql`false`);
         break;
       case 'drafts':
-        conditions.push(eq(schema.emails.folder, 'drafts'));
+        // Drafts not implemented yet on Track A — empty results.
+        conditions.push(sql`false`);
         break;
       default:
-        // Default inbox - exclude archived and trash
-        conditions.push(eq(schema.emails.isArchived, false));
-        conditions.push(
-          or(
-            eq(schema.emails.folder, 'inbox'),
-            eq(schema.emails.folder, params.folder)
-          )!
-        );
+        // Default inbox — inbound, not deleted
+        conditions.push(eq(schema.messages.direction, 'inbound'));
+        conditions.push(eq(schema.messages.isDeleted, false));
     }
   } else {
-    // Default: show inbox, exclude archived
-    conditions.push(eq(schema.emails.isArchived, false));
+    // Default: inbound inbox, not deleted
+    conditions.push(eq(schema.messages.direction, 'inbound'));
+    conditions.push(eq(schema.messages.isDeleted, false));
   }
 
   if (params.category) {
-    conditions.push(eq(schema.emails.aiCategory, params.category as any));
+    conditions.push(eq(schema.messages.aiCategory, params.category as any));
   }
 
   if (params.unread) {
-    conditions.push(eq(schema.emails.isRead, false));
+    conditions.push(eq(schema.messages.isRead, false));
   }
 
   if (params.starred) {
-    conditions.push(eq(schema.emails.isStarred, true));
+    conditions.push(eq(schema.messages.isStarred, true));
   }
 
-  // Note: For full-text search, we should use FTS5 directly
-  // This is a simplified LIKE search
   if (params.search) {
+    // Use tsvector full-text search if available, fall back to ILIKE
     conditions.push(
-      or(
-        like(schema.emails.subject, `%${params.search}%`),
-        like(schema.emails.fromName, `%${params.search}%`),
-        like(schema.emails.fromAddress, `%${params.search}%`)
-      )!
+      sql`${schema.messages.bodyTsv} @@ plainto_tsquery('english', ${params.search})`
     );
   }
 
   const offset = (params.page - 1) * params.limit;
 
-  const emails = await db.query.emails.findMany({
-    where: and(...conditions),
-    orderBy: desc(schema.emails.receivedAt),
-    limit: params.limit,
-    offset,
-    columns: {
-      id: true,
-      accountId: true,
-      messageId: true,
-      subject: true,
-      fromAddress: true,
-      fromName: true,
-      snippet: true,
-      receivedAt: true,
-      isRead: true,
-      isStarred: true,
-      hasAttachments: true,
-      aiCategory: true,
-      aiPriority: true,
-    },
-    with: {
-      account: {
-        columns: {
-          email: true,
-          displayName: true,
-        },
-      },
-    },
-  });
+  try {
+    const rows = await db
+      .select({
+        id: schema.messages.id,
+        channelAccountId: schema.messages.channelAccountId,
+        providerMessageId: schema.messages.providerMessageId,
+        subject: schema.messages.subject,
+        fromIdentity: schema.messages.fromIdentity,
+        snippet: schema.messages.snippet,
+        receivedAt: schema.messages.receivedAt,
+        isRead: schema.messages.isRead,
+        isStarred: schema.messages.isStarred,
+        hasAttachments: schema.messages.hasAttachments,
+        aiCategory: schema.messages.aiCategory,
+        aiPriority: schema.messages.aiPriority,
+        direction: schema.messages.direction,
+      })
+      .from(schema.messages)
+      .where(and(...conditions))
+      .orderBy(desc(schema.messages.receivedAt))
+      .limit(params.limit)
+      .offset(offset);
 
-  return NextResponse.json({ emails });
+    // Map to the shape the frontend expects (backward compat).
+    const emails = rows.map((r) => ({
+      id: r.id,
+      accountId: r.channelAccountId,
+      messageId: r.providerMessageId,
+      subject: r.subject,
+      fromAddress: (r.fromIdentity as any)?.value ?? '',
+      fromName: (r.fromIdentity as any)?.display ?? '',
+      snippet: r.snippet,
+      receivedAt: r.receivedAt,
+      isRead: r.isRead,
+      isStarred: r.isStarred,
+      hasAttachments: r.hasAttachments,
+      aiCategory: r.aiCategory,
+      aiPriority: r.aiPriority,
+    }));
+
+    return NextResponse.json({ emails });
+  } catch (error) {
+    console.error('[emails] GET failed', error);
+    return NextResponse.json({ emails: [] });
+  }
 }

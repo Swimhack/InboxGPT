@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_extensions",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__get_project_url",
+      "Bash(ls /c/Users/james/Desktop/RANDOM/AI/InboxGPT/.env*)",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__get_publishable_keys",
+      "Bash(\"/c/Program Files/nodejs/npx.cmd\" tsc --noEmit)",
+      "Bash(\"/c/Program Files/nodejs/npm.cmd\" run build)",
+      "mcp__supabase__get_advisors",
+      "Bash(gh org:*)",
+      "Bash(gh api:*)",
+      "Bash(cat README* CLAUDE*)",
+      "Bash(command -v fly flyctl)",
+      "Bash(fly status:*)",
+      "Bash(flyctl status:*)",
+      "Bash(fly auth:*)",
+      "Bash(fly orgs:*)",
+      "Bash(fly apps:*)",
+      "Bash(DATABASE_URL=\"postgres://fake:fake@localhost/fake\" \"/c/Program Files/nodejs/npx.cmd\" drizzle-kit generate --name=track_a_full)",
+      "Bash(fly deploy:*)",
+      "Bash(fly machines:*)",
+      "Bash(fly doctor:*)",
+      "Bash(fly platform:*)",
+      "Bash(fly version:*)",
+      "Bash(FLY_NO_DEPOT=1 fly deploy --ha=false --depot=false --recreate-builder)",
+      "Bash(curl -sI https://inboxgpt.fly.dev/)",
+      "Bash(curl -s https://inboxgpt.fly.dev/login)",
+      "Bash(fly secrets:*)",
+      "Bash(curl -s https://inboxgpt.fly.dev/api/status)",
+      "Bash(fly logs:*)",
+      "Bash(curl -sI https://inboxgpt.fly.dev/login)",
+      "WebFetch(domain:localhost)"
+    ]
+  }
+}

@@ -45,7 +45,7 @@ export async function addJob<T extends JobData>(
   await db.insert(schema.jobs).values({
     id,
     type,
-    data: JSON.stringify(data),
+    data: data as unknown as Record<string, unknown>,
     status: 'pending',
     priority: options.priority ?? 0,
     maxAttempts: options.maxAttempts ?? 3,
@@ -111,7 +111,7 @@ export async function completeJob(jobId: string, result?: unknown): Promise<void
     .set({
       status: 'completed',
       completedAt: new Date(),
-      result: result ? JSON.stringify(result) : null,
+      result: result ? (result as unknown as Record<string, unknown>) : null,
     })
     .where(eq(schema.jobs.id, jobId));
 }

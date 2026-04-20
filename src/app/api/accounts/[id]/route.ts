@@ -1,36 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { getWorkspace } from '@/lib/auth/workspace';
 import { db, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({ error: 'No workspace' }, { status: 400 });
+  }
 
   const { id } = await params;
 
-  const account = await db.query.emailAccounts.findFirst({
-    where: and(
-      eq(schema.emailAccounts.id, id),
-      eq(schema.emailAccounts.userId, session.user.id)
-    ),
-    columns: {
-      id: true,
-      email: true,
-      displayName: true,
-      providerType: true,
-      lastSyncAt: true,
-      syncStatus: true,
-      syncError: true,
-      isActive: true,
-      createdAt: true,
-    },
-  });
+  const [account] = await db
+    .select({
+      id: schema.channelAccounts.id,
+      externalAccountId: schema.channelAccounts.externalAccountId,
+      displayName: schema.channelAccounts.displayName,
+      provider: schema.channelAccounts.provider,
+      status: schema.channelAccounts.status,
+      lastSyncAt: schema.channelAccounts.lastSyncAt,
+      lastError: schema.channelAccounts.lastError,
+      createdAt: schema.channelAccounts.createdAt,
+    })
+    .from(schema.channelAccounts)
+    .where(
+      and(
+        eq(schema.channelAccounts.id, id),
+        eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
+      )
+    );
 
   if (!account) {
     return NextResponse.json({ error: 'Account not found' }, { status: 404 });
@@ -40,33 +46,28 @@ export async function GET(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({ error: 'No workspace' }, { status: 400 });
+  }
 
   const { id } = await params;
 
-  // Verify ownership
-  const account = await db.query.emailAccounts.findFirst({
-    where: and(
-      eq(schema.emailAccounts.id, id),
-      eq(schema.emailAccounts.userId, session.user.id)
-    ),
-  });
-
-  if (!account) {
-    return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-  }
-
-  // Delete associated emails first
-  await db.delete(schema.emails).where(eq(schema.emails.accountId, id));
-
-  // Delete the account
-  await db.delete(schema.emailAccounts).where(eq(schema.emailAccounts.id, id));
+  await db
+    .delete(schema.channelAccounts)
+    .where(
+      and(
+        eq(schema.channelAccounts.id, id),
+        eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
+      )
+    );
 
   return NextResponse.json({ success: true });
 }
@@ -79,33 +80,36 @@ export async function PATCH(
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({ error: 'No workspace' }, { status: 400 });
+  }
 
   const { id } = await params;
-
-  // Verify ownership
-  const account = await db.query.emailAccounts.findFirst({
-    where: and(
-      eq(schema.emailAccounts.id, id),
-      eq(schema.emailAccounts.userId, session.user.id)
-    ),
-  });
-
-  if (!account) {
-    return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-  }
-
   const body = await request.json();
-  const { displayName, isActive } = body;
 
-  const updates: Partial<typeof schema.emailAccounts.$inferInsert> = {};
-  if (displayName !== undefined) updates.displayName = displayName;
-  if (isActive !== undefined) updates.isActive = isActive;
-
-  if (Object.keys(updates).length > 0) {
-    await db.update(schema.emailAccounts)
-      .set(updates)
-      .where(eq(schema.emailAccounts.id, id));
+  const updates: Partial<typeof schema.channelAccounts.$inferInsert> = {};
+  if (typeof body.displayName === 'string') updates.displayName = body.displayName;
+  if (typeof body.isActive === 'boolean') updates.status = body.isActive ? 'active' : 'paused';
+  if (body.status === 'active' || body.status === 'paused' || body.status === 'error') {
+    updates.status = body.status;
   }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ success: true });
+  }
+
+  updates.updatedAt = new Date();
+
+  await db
+    .update(schema.channelAccounts)
+    .set(updates)
+    .where(
+      and(
+        eq(schema.channelAccounts.id, id),
+        eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
+      )
+    );
 
   return NextResponse.json({ success: true });
 }

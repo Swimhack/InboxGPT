@@ -1,40 +1,30 @@
-import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
+import { NextRequest, NextResponse } from 'next/server';
 
-const MICROSOFT_AUTH_URL = 'https://login.microsoftonline.com';
+/**
+ * GET /api/auth/oauth/outlook
+ *
+ * Delegates to NextAuth's built-in Azure AD sign-in endpoint. NextAuth
+ * owns the registered redirect URI (`/api/auth/callback/azure-ad`) in
+ * the Azure AD app registration, so reusing it avoids
+ * redirect_uri_mismatch errors.
+ *
+ * If AZURE_AD_CLIENT_ID/_SECRET aren't set in env, NextAuth doesn't
+ * register the provider and this redirect will land on NextAuth's
+ * built-in error page with a clear message.
+ */
+export async function GET(request: NextRequest) {
+  const from = request.nextUrl.searchParams.get('from') ?? '/connect-channels';
+  const callbackUrl = encodeURIComponent(from);
 
-export async function GET() {
-  const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.redirect(new URL('/login', process.env.NEXTAUTH_URL));
+  if (!process.env.AZURE_AD_CLIENT_ID || !process.env.AZURE_AD_CLIENT_SECRET) {
+    return NextResponse.json(
+      { error: 'Outlook OAuth not configured on this server. Ask your admin to set AZURE_AD_CLIENT_ID and AZURE_AD_CLIENT_SECRET.' },
+      { status: 501 }
+    );
   }
 
-  const clientId = process.env.AZURE_AD_CLIENT_ID;
-  const tenantId = process.env.AZURE_AD_TENANT_ID || 'common';
-
-  if (!clientId) {
-    return NextResponse.json({ error: 'Outlook OAuth not configured' }, { status: 500 });
-  }
-
-  const redirectUri = `${process.env.NEXTAUTH_URL}/api/auth/oauth/outlook/callback`;
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: [
-      'openid',
-      'profile',
-      'email',
-      'offline_access',
-      'https://outlook.office.com/IMAP.AccessAsUser.All',
-      'https://outlook.office.com/SMTP.Send',
-      'https://outlook.office.com/Mail.Read',
-      'https://outlook.office.com/Mail.Send',
-    ].join(' '),
-    response_mode: 'query',
-    state: session.user.id,
-  });
-
-  return NextResponse.redirect(`${MICROSOFT_AUTH_URL}/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`);
+  const base = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+  return NextResponse.redirect(
+    new URL(`/api/auth/signin/azure-ad?callbackUrl=${callbackUrl}&prompt=select_account`, base)
+  );
 }

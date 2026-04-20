@@ -1,80 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { getWorkspace } from '@/lib/auth/workspace';
 import { db, schema } from '@/lib/db';
-import { eq, and, or, like, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { z } from 'zod';
+
+const searchSchema = z.object({
+  q: z.string().min(1),
+  limit: z.string().optional().default('20').transform((v) => parseInt(v, 10)),
+});
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const workspace = await getWorkspace();
+  if (!workspace) return NextResponse.json({ emails: [] });
 
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
-  const limit = parseInt(searchParams.get('limit') || '50', 10);
-  const offset = parseInt(searchParams.get('offset') || '0', 10);
-
-  if (!query) {
-    return NextResponse.json({ error: 'Search query required' }, { status: 400 });
-  }
-
-  const searchPattern = `%${query}%`;
-
-  // Get user's account IDs first
-  const accounts = await db.query.emailAccounts.findMany({
-    where: eq(schema.emailAccounts.userId, session.user.id),
-    columns: { id: true },
+  const parsed = searchSchema.safeParse({
+    q: searchParams.get('q'),
+    limit: searchParams.get('limit') ?? undefined,
   });
+  if (!parsed.success) return NextResponse.json({ error: 'Search query required' }, { status: 400 });
 
-  const accountIds = accounts.map((a) => a.id);
+  const { q, limit } = parsed.data;
 
-  if (accountIds.length === 0) {
-    return NextResponse.json({ emails: [], total: 0 });
-  }
-
-  // Search emails across subject, from, and body
-  const emails = await db.query.emails.findMany({
-    where: and(
-      or(...accountIds.map((id) => eq(schema.emails.accountId, id))),
-      or(
-        like(schema.emails.subject, searchPattern),
-        like(schema.emails.fromAddress, searchPattern),
-        like(schema.emails.fromName, searchPattern),
-        like(schema.emails.bodyText, searchPattern),
-        like(schema.emails.snippet, searchPattern)
+  try {
+    const rows = await db
+      .select({
+        id: schema.messages.id,
+        channelAccountId: schema.messages.channelAccountId,
+        providerMessageId: schema.messages.providerMessageId,
+        subject: schema.messages.subject,
+        fromIdentity: schema.messages.fromIdentity,
+        snippet: schema.messages.snippet,
+        receivedAt: schema.messages.receivedAt,
+        isRead: schema.messages.isRead,
+        isStarred: schema.messages.isStarred,
+        hasAttachments: schema.messages.hasAttachments,
+        aiCategory: schema.messages.aiCategory,
+        aiPriority: schema.messages.aiPriority,
+      })
+      .from(schema.messages)
+      .where(
+        and(
+          eq(schema.messages.workspaceId, workspace.workspaceId),
+          eq(schema.messages.isDeleted, false),
+          sql`${schema.messages.bodyTsv} @@ plainto_tsquery('english', ${q})`
+        )
       )
-    ),
-    orderBy: [desc(schema.emails.receivedAt)],
-    limit,
-    offset,
-    columns: {
-      id: true,
-      accountId: true,
-      messageId: true,
-      subject: true,
-      fromAddress: true,
-      fromName: true,
-      snippet: true,
-      receivedAt: true,
-      isRead: true,
-      isStarred: true,
-      hasAttachments: true,
-      aiCategory: true,
-      aiPriority: true,
-    },
-    with: {
-      account: {
-        columns: {
-          email: true,
-          displayName: true,
-        },
-      },
-    },
-  });
+      .orderBy(desc(schema.messages.receivedAt))
+      .limit(limit);
 
-  return NextResponse.json({
-    emails,
-    query,
-    count: emails.length,
-  });
+    const emails = rows.map((r) => ({
+      id: r.id,
+      accountId: r.channelAccountId,
+      messageId: r.providerMessageId,
+      subject: r.subject,
+      fromAddress: (r.fromIdentity as any)?.value ?? '',
+      fromName: (r.fromIdentity as any)?.display ?? '',
+      snippet: r.snippet,
+      receivedAt: r.receivedAt,
+      isRead: r.isRead,
+      isStarred: r.isStarred,
+      hasAttachments: r.hasAttachments,
+      aiCategory: r.aiCategory,
+      aiPriority: r.aiPriority,
+    }));
+
+    return NextResponse.json({ emails });
+  } catch (error) {
+    console.error('[search] failed', error);
+    return NextResponse.json({ emails: [] });
+  }
 }

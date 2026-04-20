@@ -13,12 +13,6 @@ export default function CompletePage() {
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'processing' | 'done'>('syncing');
   const [emailCount, setEmailCount] = useState(0);
 
-  // Update progress bar
-  useEffect(() => {
-    const progress = document.getElementById('onboarding-progress');
-    if (progress) progress.style.width = '100%';
-  }, []);
-
   // Simulate sync progress
   useEffect(() => {
     const interval = setInterval(() => {
@@ -152,7 +146,7 @@ export default function CompletePage() {
       {syncStatus !== 'done' && (
         <div className="text-center space-y-2 animate-in fade-in delay-500 duration-500">
           <p className="text-sm text-muted-foreground">
-            Tip: Inbox Pro will continue syncing in the background
+            Tip: InboxGPT will continue syncing in the background
           </p>
         </div>
       )}

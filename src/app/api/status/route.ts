@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { getWorkspace } from '@/lib/auth/workspace';
 import { db, schema } from '@/lib/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 export async function GET() {
   const session = await getSession();
@@ -9,74 +10,59 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({
+      syncing: false,
+      accounts: [],
+      queueStats: { pending: 0, processing: 0 },
+    });
+  }
+
   try {
-    // Get all accounts with their sync status
-    const accounts = await db.query.emailAccounts.findMany({
-      where: eq(schema.emailAccounts.userId, session.user.id),
-      columns: {
-        id: true,
-        email: true,
-        syncStatus: true,
-        lastSyncAt: true,
-        syncError: true,
-      },
-    });
+    const accounts = await db
+      .select({
+        id: schema.channelAccounts.id,
+        externalAccountId: schema.channelAccounts.externalAccountId,
+        provider: schema.channelAccounts.provider,
+        status: schema.channelAccounts.status,
+        lastSyncAt: schema.channelAccounts.lastSyncAt,
+        lastError: schema.channelAccounts.lastError,
+      })
+      .from(schema.channelAccounts)
+      .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId));
 
-    // Count emails pending AI processing
-    const pendingAI = await db.query.emails.findMany({
-      where: and(
-        eq(schema.emails.userId, session.user.id),
-        isNull(schema.emails.aiProcessedAt)
-      ),
-      columns: { id: true },
-    });
-
-    // Get queue stats if available
     let queueStats = { pending: 0, processing: 0 };
     try {
       const { getQueueStats } = await import('@/lib/queue');
       const stats = await getQueueStats();
-      queueStats = {
-        pending: stats.pending,
-        processing: stats.processing,
-      };
+      queueStats = { pending: stats.pending, processing: stats.processing };
     } catch {
-      // Queue module might not be available
+      /* queue module may not be available */
     }
 
-    // Determine overall status
-    const isSyncing = accounts.some((a) => a.syncStatus === 'syncing');
-    const hasErrors = accounts.some((a) => a.syncStatus === 'error');
-    const isAIProcessing = pendingAI.length > 0 || queueStats.processing > 0;
-
-    // Get most recent sync time
+    const hasErrors = accounts.some((a) => a.lastError != null);
     const lastSync = accounts.reduce((latest, a) => {
-      if (a.lastSyncAt && (!latest || a.lastSyncAt > latest)) {
-        return a.lastSyncAt;
-      }
+      if (a.lastSyncAt && (!latest || a.lastSyncAt > latest)) return a.lastSyncAt;
       return latest;
     }, null as Date | null);
 
     return NextResponse.json({
-      syncing: isSyncing,
-      aiProcessing: isAIProcessing,
+      syncing: queueStats.processing > 0,
       hasErrors,
-      pendingEmails: pendingAI.length,
       lastSync: lastSync?.toISOString() || null,
       queueStats,
       accounts: accounts.map((a) => ({
         id: a.id,
-        email: a.email,
-        status: a.syncStatus,
+        email: a.externalAccountId,
+        provider: a.provider,
+        status: a.status,
         lastSync: a.lastSyncAt?.toISOString() || null,
-        error: a.syncError,
+        error: a.lastError,
       })),
     });
   } catch (error) {
     console.error('Status check failed:', error);
-    return NextResponse.json(
-      { error: 'Failed to check status' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to check status' }, { status: 500 });
   }
 }

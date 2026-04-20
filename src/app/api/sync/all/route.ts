@@ -1,66 +1,49 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { getWorkspace } from '@/lib/auth/workspace';
 import { db, schema } from '@/lib/db';
-import { eq, and, ne } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { addEmailSyncJob } from '@/lib/queue';
 
 export async function POST() {
   const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({ error: 'No workspace' }, { status: 400 });
+  }
 
-  // Get all active accounts that aren't already syncing
-  const accounts = await db.query.emailAccounts.findMany({
-    where: and(
-      eq(schema.emailAccounts.userId, session.user.id),
-      eq(schema.emailAccounts.isActive, true),
-      ne(schema.emailAccounts.syncStatus, 'syncing')
-    ),
-    columns: { id: true },
-  });
+  const accounts = await db
+    .select({ id: schema.channelAccounts.id, provider: schema.channelAccounts.provider })
+    .from(schema.channelAccounts)
+    .where(
+      and(
+        eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+        eq(schema.channelAccounts.status, 'active')
+      )
+    );
 
   if (accounts.length === 0) {
     return NextResponse.json({ message: 'No accounts to sync', syncing: 0 });
   }
 
-  // Mark all accounts as syncing
   await Promise.all(
     accounts.map((account) =>
-      db.update(schema.emailAccounts)
-        .set({
-          syncStatus: 'syncing',
-          syncError: null,
-        })
-        .where(eq(schema.emailAccounts.id, account.id))
+      addEmailSyncJob({
+        accountId: account.id,
+        userId: session.user.id as string,
+        type: 'incremental',
+      }).catch((err) => {
+        console.error(`[sync/all] failed to enqueue job for account ${account.id}`, err);
+      })
     )
   );
 
-  // In production, this would add jobs to BullMQ for each account
-  // For development, simulate sync completion
-  accounts.forEach((account) => {
-    setTimeout(async () => {
-      try {
-        await db.update(schema.emailAccounts)
-          .set({
-            syncStatus: 'idle',
-            lastSyncAt: new Date(),
-          })
-          .where(eq(schema.emailAccounts.id, account.id));
-      } catch (error) {
-        console.error(`Sync error for account ${account.id}:`, error);
-        await db.update(schema.emailAccounts)
-          .set({
-            syncStatus: 'error',
-            syncError: 'Sync failed',
-          })
-          .where(eq(schema.emailAccounts.id, account.id));
-      }
-    }, 3000 + Math.random() * 2000);
-  });
-
   return NextResponse.json({
     success: true,
-    message: `Sync started for ${accounts.length} account(s)`,
+    message: `Sync queued for ${accounts.length} account(s)`,
     syncing: accounts.length,
   });
 }

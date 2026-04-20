@@ -48,7 +48,9 @@ async function processJob(): Promise<boolean> {
   }
 
   try {
-    const data = JSON.parse(job.data);
+    // jsonb column — Drizzle returns parsed JS object, no JSON.parse needed.
+    // Handle legacy double-encoded jobs gracefully.
+    const data = typeof job.data === 'string' ? JSON.parse(job.data) : job.data;
 
     if (job.type === 'email-sync') {
       const result = await processEmailSync(data as EmailSyncJobData);

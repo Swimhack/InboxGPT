@@ -46,7 +46,7 @@ export function Sidebar() {
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
             <Mail className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="text-lg font-semibold">Inbox Pro</span>
+          <span className="text-lg font-semibold">InboxGPT</span>
         </Link>
       </div>
 

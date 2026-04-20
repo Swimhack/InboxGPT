@@ -61,8 +61,9 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const fetchEmails = async () => {
+  const fetchEmails = async (): Promise<number> => {
     try {
       const params = new URLSearchParams();
       if (folder) params.set('folder', folder);
@@ -74,6 +75,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
 
       const data = await res.json();
       setEmails(data.emails || []);
+      return data.emails?.length ?? 0;
     } catch (error) {
       console.error('Failed to fetch emails:', error);
       toast({
@@ -81,19 +83,62 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
         description: 'Failed to load emails',
         variant: 'destructive',
       });
+      return 0;
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
   };
 
+  // Auto-trigger sync on first load when inbox is empty
   useEffect(() => {
-    fetchEmails();
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout>;
+
+    (async () => {
+      const count = await fetchEmails();
+      if (count > 0 || cancelled) return;
+
+      // Inbox is empty — kick off a sync
+      setIsSyncing(true);
+      try {
+        await fetch('/api/sync/all', { method: 'POST' });
+      } catch {
+        /* sync trigger failed — not critical */
+      }
+
+      // Poll for new messages (every 3s for up to 60s)
+      let attempts = 0;
+      const poll = async () => {
+        if (cancelled || attempts >= 20) {
+          setIsSyncing(false);
+          return;
+        }
+        attempts++;
+        const n = await fetchEmails();
+        if (n > 0) {
+          setIsSyncing(false);
+          toast({ title: `Synced ${n} emails` });
+        } else {
+          pollTimer = setTimeout(poll, 3000);
+        }
+      };
+      pollTimer = setTimeout(poll, 3000);
+    })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(pollTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folder, accountId, category]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    fetchEmails();
+    try {
+      await fetch('/api/sync/all', { method: 'POST' });
+    } catch { /* non-critical */ }
+    setTimeout(() => fetchEmails(), 2000);
   };
 
   const toggleSelect = (id: string) => {
@@ -218,12 +263,18 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
       <ScrollArea className="flex-1">
         {emails.length === 0 ? (
           <div className="p-4">
-            {folder === 'starred' && <EmptyStarred />}
-            {folder === 'sent' && <EmptySent />}
-            {folder === 'archive' && <EmptyArchive />}
-            {folder === 'trash' && <EmptyTrash />}
-            {category && <EmptyCategory category={category} />}
-            {!folder && !category && <EmptyInbox />}
+            {isSyncing ? (
+              <SyncingState />
+            ) : (
+              <>
+                {folder === 'starred' && <EmptyStarred />}
+                {folder === 'sent' && <EmptySent />}
+                {folder === 'archive' && <EmptyArchive />}
+                {folder === 'trash' && <EmptyTrash />}
+                {category && <EmptyCategory category={category} />}
+                {!folder && !category && <EmptyInbox />}
+              </>
+            )}
           </div>
         ) : (
           <div className="divide-y">

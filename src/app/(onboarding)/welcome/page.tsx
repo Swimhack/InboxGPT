@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,12 +7,6 @@ import { Mail, Sparkles, FolderOpen, Zap, ArrowRight } from 'lucide-react';
 
 export default function WelcomePage() {
   const router = useRouter();
-
-  // Update progress bar
-  useEffect(() => {
-    const progress = document.getElementById('onboarding-progress');
-    if (progress) progress.style.width = '25%';
-  }, []);
 
   const features = [
     {
@@ -45,7 +38,7 @@ export default function WelcomePage() {
         <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-primary/10 mb-2">
           <Mail className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">Welcome to Inbox Pro</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Welcome to InboxGPT</h1>
         <p className="text-muted-foreground text-lg max-w-md mx-auto">
           Your AI-powered email assistant that helps you stay organized and respond faster.
         </p>
@@ -73,7 +66,7 @@ export default function WelcomePage() {
           <Button
             size="lg"
             className="w-full"
-            onClick={() => router.push('/connect-email')}
+            onClick={() => router.push('/connect-channels')}
           >
             Get Started
             <ArrowRight className="ml-2 h-4 w-4" />

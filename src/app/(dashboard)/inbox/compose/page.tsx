@@ -38,9 +38,14 @@ export default function ComposePage() {
       try {
         const res = await fetch('/api/accounts');
         const data = await res.json();
-        setAccounts(data.accounts || []);
-        if (data.accounts?.length > 0) {
-          setForm((f) => ({ ...f, accountId: data.accounts[0].id }));
+        const accts = (data.accounts || []).map((a: any) => ({
+          id: a.id,
+          email: a.email || a.externalAccountId || '',
+          displayName: a.displayName,
+        }));
+        setAccounts(accts);
+        if (accts.length > 0) {
+          setForm((f) => ({ ...f, accountId: accts[0].id }));
         }
       } catch (error) {
         console.error('Failed to fetch accounts:', error);
@@ -121,7 +126,7 @@ export default function ComposePage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-3xl mx-auto h-full overflow-auto">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/inbox">

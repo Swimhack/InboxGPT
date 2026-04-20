@@ -1,103 +1,106 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
+import { getWorkspace } from '@/lib/auth/workspace';
 import { db, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const workspace = await getWorkspace();
+  if (!workspace) return NextResponse.json({ error: 'No workspace' }, { status: 400 });
 
-  const email = await db.query.emails.findFirst({
-    where: and(eq(schema.emails.id, params.id), eq(schema.emails.userId, session.user.id)),
-    with: {
-      attachments: true,
-      account: {
-        columns: {
-          email: true,
-          displayName: true,
-        },
-      },
-    },
-  });
+  const { id } = await params;
 
-  if (!email) {
-    return NextResponse.json({ error: 'Email not found' }, { status: 404 });
-  }
+  const [msg] = await db
+    .select()
+    .from(schema.messages)
+    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
+
+  if (!msg) return NextResponse.json({ error: 'Email not found' }, { status: 404 });
 
   // Mark as read
-  if (!email.isRead) {
-    await db
-      .update(schema.emails)
-      .set({ isRead: true, updatedAt: new Date() })
-      .where(eq(schema.emails.id, params.id));
+  if (!msg.isRead) {
+    await db.update(schema.messages).set({ isRead: true, updatedAt: new Date() }).where(eq(schema.messages.id, id));
   }
 
-  return NextResponse.json({ email });
+  // Map Track A → shape the display component expects
+  const from = msg.fromIdentity as { kind?: string; value?: string; display?: string } | null;
+  const toList = (msg.toIdentities as Array<{ kind?: string; value?: string; display?: string }>) ?? [];
+
+  return NextResponse.json({
+    email: {
+      id: msg.id,
+      accountId: msg.channelAccountId,
+      messageId: msg.providerMessageId,
+      subject: msg.subject,
+      fromAddress: from?.value ?? '',
+      fromName: from?.display ?? '',
+      toAddresses: JSON.stringify(toList.map((t) => ({ address: t.value, name: t.display }))),
+      ccAddresses: null,
+      sentAt: msg.sentAt?.toISOString() ?? null,
+      receivedAt: msg.receivedAt.toISOString(),
+      bodyText: msg.bodyText,
+      bodyHtml: msg.bodyHtml,
+      isRead: true, // we just marked it
+      isStarred: msg.isStarred,
+      isArchived: false,
+      hasAttachments: msg.hasAttachments,
+      aiCategory: msg.aiCategory,
+      aiPriority: msg.aiPriority,
+      aiSummary: msg.aiSummary,
+      aiSuggestedReplies: msg.aiSuggestedReplies ? JSON.stringify(msg.aiSuggestedReplies) : null,
+      attachments: [],
+    },
+  });
 }
 
 const updateSchema = z.object({
   isRead: z.boolean().optional(),
   isStarred: z.boolean().optional(),
-  isArchived: z.boolean().optional(),
-  folder: z.string().optional(),
+  isDeleted: z.boolean().optional(),
 });
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const workspace = await getWorkspace();
+  if (!workspace) return NextResponse.json({ error: 'No workspace' }, { status: 400 });
 
-  try {
-    const body = await request.json();
-    const updates = updateSchema.parse(body);
+  const { id } = await params;
+  const body = await request.json();
+  const updates = updateSchema.parse(body);
 
-    // Verify ownership
-    const email = await db.query.emails.findFirst({
-      where: and(eq(schema.emails.id, params.id), eq(schema.emails.userId, session.user.id)),
-    });
+  await db
+    .update(schema.messages)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email not found' }, { status: 404 });
-    }
-
-    await db
-      .update(schema.emails)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(schema.emails.id, params.id));
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 });
-    }
-    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
-  }
+  return NextResponse.json({ success: true });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const workspace = await getWorkspace();
+  if (!workspace) return NextResponse.json({ error: 'No workspace' }, { status: 400 });
 
-  // Verify ownership
-  const email = await db.query.emails.findFirst({
-    where: and(eq(schema.emails.id, params.id), eq(schema.emails.userId, session.user.id)),
-  });
+  const { id } = await params;
 
-  if (!email) {
-    return NextResponse.json({ error: 'Email not found' }, { status: 404 });
-  }
-
-  // Soft delete by marking as deleted
   await db
-    .update(schema.emails)
-    .set({ isDeleted: true, folder: 'trash', updatedAt: new Date() })
-    .where(eq(schema.emails.id, params.id));
+    .update(schema.messages)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
 
   return NextResponse.json({ success: true });
 }

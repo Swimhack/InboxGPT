@@ -36,7 +36,7 @@ const ERROR_MESSAGES: Record<string, FriendlyErrorInfo> = {
   OAUTH_REVOKED: {
     title: 'Access Revoked',
     description:
-      "You've revoked Inbox Pro's access to your email. Reconnect to start syncing again.",
+      "You've revoked InboxGPT's access to your email. Reconnect to start syncing again.",
     actionLabel: 'Reconnect Account',
     actionUrl: '/accounts',
     canRetry: false,

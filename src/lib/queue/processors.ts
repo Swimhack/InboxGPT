@@ -1,325 +1,378 @@
 /**
- * Job processors - handles email sync and AI processing
- *
- * These run in-process, no separate worker needed!
+ * Job processors — handles email sync and AI processing.
+ * Runs in-process via the simple-queue worker.
  */
 
-import { db, schema } from '../db';
+import { ImapFlow } from 'imapflow';
+import { simpleParser } from 'mailparser';
 import { eq } from 'drizzle-orm';
-import { createImapClient } from '../email/imap-client';
-import { getAIClient } from '../ai/client';
-import { generateId } from '../utils';
-import {
-  type EmailSyncJobData,
-  type AIProcessingJobData,
-  addAIProcessingJob,
-} from './simple-queue';
+import { db, schema } from '../db';
+import { decryptJSON, encryptJSON } from '../crypto/encryption';
+import { refreshGoogleToken, refreshMicrosoftToken } from '../email/token-refresh';
+import type { EmailSyncJobData, AIProcessingJobData } from './simple-queue';
 
-/**
- * Process an email sync job
- */
+// ────────────────────────────────────────────────────────────────────────────
+// Credential shapes stored in channelAccounts.credentialsEncrypted
+// ────────────────────────────────────────────────────────────────────────────
+
+interface OAuthCredentials {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: number | null;
+  scopes?: string[];
+}
+
+interface ImapCredentials {
+  username: string;
+  password: string;
+  imapHost: string;
+  imapPort: number;
+  imapSecure?: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// processEmailSync
+// ────────────────────────────────────────────────────────────────────────────
+
 export async function processEmailSync(data: EmailSyncJobData): Promise<{
   newEmailCount: number;
   totalFetched: number;
   skipped?: boolean;
 }> {
-  const { accountId, userId, type } = data;
-
+  const { accountId, type } = data;
   console.log(`[EmailSync] Starting ${type} sync for account ${accountId}`);
 
-  // Get account from database
-  const account = await db.query.emailAccounts.findFirst({
-    where: eq(schema.emailAccounts.id, accountId),
-  });
+  // 1. Load channel account (Track A)
+  const [account] = await db
+    .select()
+    .from(schema.channelAccounts)
+    .where(eq(schema.channelAccounts.id, accountId));
 
-  if (!account) {
-    throw new Error(`Account ${accountId} not found`);
-  }
-
-  if (!account.isActive) {
-    console.log(`[EmailSync] Account ${accountId} is not active, skipping`);
+  if (!account) throw new Error(`Account ${accountId} not found`);
+  if (account.status !== 'active') {
+    console.log(`[EmailSync] Account ${accountId} status=${account.status}, skipping`);
     return { skipped: true, newEmailCount: 0, totalFetched: 0 };
   }
+  if (!account.credentialsEncrypted) {
+    throw new Error(`Account ${accountId} has no credentials`);
+  }
 
-  // Update sync status
-  await db
-    .update(schema.emailAccounts)
-    .set({ syncStatus: 'syncing', syncError: null })
-    .where(eq(schema.emailAccounts.id, accountId));
+  // 2. Get credentials and refresh if needed
+  const provider = account.provider;
 
-  let client;
-  try {
-    // Connect to IMAP
-    client = await createImapClient(account);
-
-    // Determine fetch options
-    const fetchOptions: Parameters<typeof client.fetchEmails>[0] = {
-      folder: 'INBOX',
-      limit: type === 'full' ? 500 : 50,
-    };
-
-    if (type === 'incremental' && account.lastSyncUid) {
-      fetchOptions.sinceUid = account.lastSyncUid;
-    } else if (type === 'incremental' && account.lastSyncAt) {
-      fetchOptions.since = account.lastSyncAt;
-    }
-
-    // Fetch emails
-    const messages = await client.fetchEmails(fetchOptions);
-    console.log(`[EmailSync] Fetched ${messages.length} messages for account ${accountId}`);
-
-    let highestUid = account.lastSyncUid || 0;
-    let newEmailCount = 0;
-
-    // Process each message
-    for (const message of messages) {
-      // Check if email already exists
-      const existingEmail = await db.query.emails.findFirst({
-        where: eq(schema.emails.messageId, message.messageId),
-      });
-
-      if (existingEmail) {
-        // Update flags if changed
-        if (
-          existingEmail.isRead !== message.flags.seen ||
-          existingEmail.isStarred !== message.flags.flagged
-        ) {
-          await db
-            .update(schema.emails)
-            .set({
-              isRead: message.flags.seen,
-              isStarred: message.flags.flagged,
-              updatedAt: new Date(),
-            })
-            .where(eq(schema.emails.id, existingEmail.id));
-        }
-        continue;
-      }
-
-      // Insert new email
-      const emailId = generateId();
-
-      await db.insert(schema.emails).values({
-        id: emailId,
-        accountId,
-        userId,
-        messageId: message.messageId,
-        threadId: message.threadId,
-        uid: message.uid,
-        subject: message.subject,
-        fromAddress: message.from.address,
-        fromName: message.from.name,
-        toAddresses: JSON.stringify(message.to),
-        ccAddresses: message.cc ? JSON.stringify(message.cc) : null,
-        sentAt: message.date,
-        receivedAt: message.date,
-        bodyText: message.bodyText,
-        bodyHtml: message.bodyHtml,
-        snippet: message.bodyText?.slice(0, 200),
-        hasAttachments: message.attachments.length > 0,
-        isRead: message.flags.seen,
-        isStarred: message.flags.flagged,
-        isDraft: message.flags.draft,
-        folder: 'inbox',
-      });
-
-      // Insert attachments
-      for (const attachment of message.attachments) {
-        await db.insert(schema.attachments).values({
-          id: generateId(),
-          emailId,
-          filename: attachment.filename,
-          mimeType: attachment.mimeType,
-          size: attachment.size,
-          contentId: attachment.contentId,
-        });
-      }
-
-      // Queue AI processing for new emails
-      await addAIProcessingJob({
-        emailId,
-        userId,
-        tasks: ['summarize', 'categorize', 'suggest-replies'],
-      });
-
-      newEmailCount++;
-
-      if (message.uid > highestUid) {
-        highestUid = message.uid;
-      }
-    }
-
-    // Update account sync status
-    await db
-      .update(schema.emailAccounts)
-      .set({
-        syncStatus: 'idle',
-        lastSyncAt: new Date(),
-        lastSyncUid: highestUid > 0 ? highestUid : account.lastSyncUid,
-        syncError: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.emailAccounts.id, accountId));
-
-    console.log(`[EmailSync] Completed for account ${accountId}: ${newEmailCount} new emails`);
-
-    return { newEmailCount, totalFetched: messages.length };
-  } catch (error) {
-    console.error(`[EmailSync] Failed for account ${accountId}:`, error);
-
-    // Update error status
-    await db
-      .update(schema.emailAccounts)
-      .set({
-        syncStatus: 'error',
-        syncError: error instanceof Error ? error.message : 'Unknown error',
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.emailAccounts.id, accountId));
-
-    throw error;
-  } finally {
-    if (client) {
-      await client.disconnect().catch(console.error);
-    }
+  if (provider === 'gmail') {
+    return syncGmailViaRest(account, type);
+  } else if (provider === 'outlook') {
+    // TODO: Outlook Graph API sync — for now skip
+    console.log(`[EmailSync] Outlook sync not yet implemented, skipping`);
+    return { skipped: true, newEmailCount: 0, totalFetched: 0 };
+  } else if (provider === 'imap') {
+    return syncViaImap(account, type);
+  } else {
+    console.log(`[EmailSync] Provider ${provider} is not an email provider, skipping`);
+    return { skipped: true, newEmailCount: 0, totalFetched: 0 };
   }
 }
 
-/**
- * Process an AI job
- */
-import { canProcessWithAI } from '../ai/limits';
-import { AIClient, type AIClientConfig } from '../ai/client';
-import { decrypt } from '../crypto/encryption';
+// ────────────────────────────────────────────────────────────────────────────
+// Gmail REST API sync — uses gmail.modify scope, no IMAP needed
+// ────────────────────────────────────────────────────────────────────────────
 
-// ... (other imports)
+const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
+
+async function getValidGmailToken(account: typeof schema.channelAccounts.$inferSelect): Promise<string> {
+  let creds = decryptJSON<OAuthCredentials>(account.credentialsEncrypted!);
+
+  const isExpired = creds.expiresAt && creds.expiresAt < Date.now() + 5 * 60 * 1000;
+  if (isExpired && creds.refreshToken) {
+    console.log(`[EmailSync] Refreshing expired Gmail token for ${account.id}`);
+    const refreshed = await refreshGoogleToken(creds.refreshToken);
+    creds = { ...creds, accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt };
+    await db
+      .update(schema.channelAccounts)
+      .set({ credentialsEncrypted: encryptJSON(creds), updatedAt: new Date() })
+      .where(eq(schema.channelAccounts.id, account.id));
+  }
+
+  return creds.accessToken;
+}
+
+interface GmailMessage {
+  id: string;
+  threadId: string;
+  labelIds: string[];
+  snippet: string;
+  payload: {
+    headers: Array<{ name: string; value: string }>;
+    mimeType: string;
+    body?: { data?: string; size: number };
+    parts?: Array<{
+      mimeType: string;
+      body?: { data?: string; size: number };
+      filename?: string;
+      parts?: Array<{ mimeType: string; body?: { data?: string } }>;
+    }>;
+  };
+  internalDate: string;
+}
+
+function getHeader(msg: GmailMessage, name: string): string {
+  return msg.payload.headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
+}
+
+function decodeBody(data?: string): string {
+  if (!data) return '';
+  return Buffer.from(data, 'base64url').toString('utf-8');
+}
+
+function extractBody(msg: GmailMessage): { text?: string; html?: string } {
+  const result: { text?: string; html?: string } = {};
+
+  function walk(parts?: GmailMessage['payload']['parts']) {
+    if (!parts) return;
+    for (const part of parts) {
+      if (part.mimeType === 'text/plain' && !result.text) {
+        result.text = decodeBody(part.body?.data);
+      } else if (part.mimeType === 'text/html' && !result.html) {
+        result.html = decodeBody(part.body?.data);
+      } else if (part.parts) {
+        walk(part.parts as GmailMessage['payload']['parts']);
+      }
+    }
+  }
+
+  if (msg.payload.body?.data) {
+    if (msg.payload.mimeType === 'text/html') {
+      result.html = decodeBody(msg.payload.body.data);
+    } else {
+      result.text = decodeBody(msg.payload.body.data);
+    }
+  }
+  walk(msg.payload.parts);
+  return result;
+}
+
+function parseEmailAddress(raw: string): { kind: string; value: string; display?: string } {
+  const match = /^(.+?)\s*<([^>]+)>$/.exec(raw.trim());
+  if (match) return { kind: 'email', display: match[1].replace(/^"|"$/g, ''), value: match[2] };
+  return { kind: 'email', value: raw.trim() };
+}
+
+async function syncGmailViaRest(
+  account: typeof schema.channelAccounts.$inferSelect,
+  type: string
+): Promise<{ newEmailCount: number; totalFetched: number }> {
+  const token = await getValidGmailToken(account);
+  const limit = type === 'full' ? 200 : 50;
+
+  // 1. List message IDs
+  let query = 'in:inbox';
+  if (type === 'incremental' && account.lastSyncAt) {
+    const epoch = Math.floor(account.lastSyncAt.getTime() / 1000);
+    query += ` after:${epoch}`;
+  }
+
+  console.log(`[EmailSync] Gmail REST: listing messages (q="${query}", limit=${limit})`);
+
+  const listRes = await fetch(
+    `${GMAIL_API}/messages?maxResults=${limit}&q=${encodeURIComponent(query)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  if (!listRes.ok) {
+    const errText = await listRes.text();
+    throw new Error(`Gmail list failed (${listRes.status}): ${errText}`);
+  }
+
+  const listData = await listRes.json();
+  const messageIds: string[] = (listData.messages ?? []).map((m: { id: string }) => m.id);
+
+  if (messageIds.length === 0) {
+    console.log(`[EmailSync] Gmail REST: no messages found`);
+    await db
+      .update(schema.channelAccounts)
+      .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+      .where(eq(schema.channelAccounts.id, account.id));
+    return { newEmailCount: 0, totalFetched: 0 };
+  }
+
+  console.log(`[EmailSync] Gmail REST: fetching ${messageIds.length} messages`);
+
+  // 2. Fetch each message (batch in parallel, 10 at a time)
+  let newEmailCount = 0;
+  for (let i = 0; i < messageIds.length; i += 10) {
+    const batch = messageIds.slice(i, i + 10);
+    const results = await Promise.allSettled(
+      batch.map(async (msgId) => {
+        const res = await fetch(`${GMAIL_API}/messages/${msgId}?format=full`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as GmailMessage;
+      })
+    );
+
+    for (const result of results) {
+      if (result.status !== 'fulfilled' || !result.value) continue;
+      const msg = result.value;
+
+      const fromRaw = getHeader(msg, 'From');
+      const toRaw = getHeader(msg, 'To');
+      const subject = getHeader(msg, 'Subject') || '(No Subject)';
+      const messageIdHeader = getHeader(msg, 'Message-ID') || `gmail-${msg.id}`;
+      const body = extractBody(msg);
+      const hasAttachments = (msg.payload.parts ?? []).some(
+        (p) => p.filename && p.filename.length > 0
+      );
+
+      try {
+        await db
+          .insert(schema.messages)
+          .values({
+            workspaceId: account.workspaceId,
+            channelAccountId: account.id,
+            provider: 'gmail',
+            providerMessageId: messageIdHeader,
+            direction: 'inbound',
+            fromIdentity: parseEmailAddress(fromRaw),
+            toIdentities: toRaw
+              .split(',')
+              .map((a) => parseEmailAddress(a))
+              .filter((a) => a.value),
+            subject,
+            bodyText: body.text,
+            bodyHtml: body.html,
+            snippet: msg.snippet || body.text?.slice(0, 200),
+            sentAt: new Date(parseInt(msg.internalDate, 10)),
+            receivedAt: new Date(parseInt(msg.internalDate, 10)),
+            isRead: !msg.labelIds.includes('UNREAD'),
+            isStarred: msg.labelIds.includes('STARRED'),
+            hasAttachments,
+          })
+          .onConflictDoNothing();
+        newEmailCount++;
+      } catch {
+        // duplicate or constraint — skip
+      }
+    }
+  }
+
+  // 3. Update account
+  await db
+    .update(schema.channelAccounts)
+    .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+    .where(eq(schema.channelAccounts.id, account.id));
+
+  console.log(`[EmailSync] Gmail REST: done — ${newEmailCount} new of ${messageIds.length} fetched`);
+  return { newEmailCount, totalFetched: messageIds.length };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// IMAP sync — for generic IMAP providers (not Gmail/Outlook)
+// ────────────────────────────────────────────────────────────────────────────
+
+async function syncViaImap(
+  account: typeof schema.channelAccounts.$inferSelect,
+  type: string
+): Promise<{ newEmailCount: number; totalFetched: number }> {
+  const creds = decryptJSON<ImapCredentials>(account.credentialsEncrypted!);
+
+  const client = new ImapFlow({
+    host: creds.imapHost,
+    port: creds.imapPort,
+    secure: creds.imapSecure ?? creds.imapPort === 993,
+    auth: { user: creds.username, pass: creds.password },
+    logger: false,
+    tls: { rejectUnauthorized: false },
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock('INBOX');
+    const limit = type === 'full' ? 200 : 50;
+    let fetchRange: string;
+
+    if (type === 'incremental' && account.lastSyncAt) {
+      fetchRange = `SINCE ${account.lastSyncAt.toISOString().split('T')[0]}`;
+    } else {
+      fetchRange = '1:*';
+    }
+
+    let newEmailCount = 0;
+    let totalFetched = 0;
+
+    try {
+      for await (const msg of client.fetch(fetchRange, {
+        uid: true, envelope: true, flags: true, source: true, bodyStructure: true,
+      })) {
+        if (totalFetched >= limit) break;
+        try {
+          const source = msg.source as Buffer | undefined;
+          if (!source) continue;
+          const parsed = await simpleParser(source);
+          const fromAddr = parsed.from?.value[0];
+          const flags = msg.flags ?? new Set<string>();
+
+          await db
+            .insert(schema.messages)
+            .values({
+              workspaceId: account.workspaceId,
+              channelAccountId: account.id,
+              provider: 'imap',
+              providerMessageId: parsed.messageId || `uid-${msg.uid}@${creds.imapHost}`,
+              direction: 'inbound',
+              fromIdentity: { kind: 'email', value: fromAddr?.address || 'unknown', display: fromAddr?.name },
+              subject: parsed.subject || '(No Subject)',
+              bodyText: parsed.text || undefined,
+              bodyHtml: parsed.html || undefined,
+              snippet: (parsed.text || '').slice(0, 200).replace(/\s+/g, ' ').trim() || undefined,
+              sentAt: parsed.date || new Date(),
+              receivedAt: parsed.date || new Date(),
+              isRead: flags.has('\\Seen'),
+              isStarred: flags.has('\\Flagged'),
+              hasAttachments: (parsed.attachments?.length ?? 0) > 0,
+            })
+            .onConflictDoNothing();
+          newEmailCount++;
+        } catch { /* skip */ }
+        totalFetched++;
+      }
+    } finally {
+      lock.release();
+    }
+
+    await db
+      .update(schema.channelAccounts)
+      .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+      .where(eq(schema.channelAccounts.id, account.id));
+
+    console.log(`[EmailSync] IMAP: done — ${newEmailCount} new of ${totalFetched} fetched`);
+    return { newEmailCount, totalFetched };
+  } catch (error) {
+    console.error(`[EmailSync] IMAP failed for ${account.id}:`, error);
+    await db
+      .update(schema.channelAccounts)
+      .set({ lastError: (error as Error).message, updatedAt: new Date() })
+      .where(eq(schema.channelAccounts.id, account.id))
+      .catch(() => {});
+    throw error;
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// processAIJob (stub — AI processing requires API keys)
+// ────────────────────────────────────────────────────────────────────────────
 
 export async function processAIJob(data: AIProcessingJobData): Promise<{
   success: boolean;
-  summary?: string;
-  category?: string;
-  priority?: string;
-  hasReplies?: boolean;
   skipped?: boolean;
   reason?: string;
 }> {
-  const { emailId, userId, tasks } = data;
-
-  console.log(`[AI] Processing tasks for email ${emailId}: ${tasks.join(', ')}`);
-
-  // Check quota/limits first
-  const limitStatus = await canProcessWithAI(userId);
-  if (!limitStatus.allowed) {
-    console.log(`[AI] Usage limit reached for user ${userId}: ${limitStatus.reason}`);
-    await db.update(schema.emails)
-      .set({
-        aiProcessedAt: new Date(),
-        aiSummary: limitStatus.reason || "AI Limit Reached"
-      })
-      .where(eq(schema.emails.id, emailId));
-    return { success: true, skipped: true, reason: limitStatus.reason };
-  }
-
-  // Determine API Key (Founder vs User)
-  let aiConfig: AIClientConfig | undefined;
-
-  if (!limitStatus.useFounderKey) {
-    // Fetch user keys
-    const user = await db.query.users.findFirst({
-      where: eq(schema.users.id, userId),
-      columns: { userAnthropicKey: true, userOpenaiKey: true }
-    });
-
-    if (user?.userAnthropicKey) {
-      aiConfig = { provider: 'anthropic', apiKey: decrypt(user.userAnthropicKey) };
-    } else if (user?.userOpenaiKey) {
-      aiConfig = { provider: 'openai', apiKey: decrypt(user.userOpenaiKey) };
-    }
-
-    // If we are here, limitStatus.allowed is true, but useFounderKey is false.
-    // This usually means the user has keys. If they don't (race condition?), we should fail or fallback?
-    // actually limits.ts checks if keys exist. So we should find them. 
-    // If decryption fails or something, we might error out, which is correct.
-  }
-
-  // Use configured client instead of singleton
-  const aiClient = new AIClient(aiConfig);
-
-  // Get email from database
-  const email = await db.query.emails.findFirst({
-    where: eq(schema.emails.id, emailId),
-  });
-
-  if (!email) {
-    throw new Error(`Email ${emailId} not found`);
-  }
-
-  // Skip if already processed
-  if (email.aiProcessedAt) {
-    console.log(`[AI] Email ${emailId} already processed, skipping`);
-    return { success: true, skipped: true };
-  }
-
-  const updates: Partial<typeof schema.emails.$inferInsert> = {};
-
-  try {
-    // Get email content
-    const subject = email.subject || '(No Subject)';
-    const body = email.bodyText || email.bodyHtml?.replace(/<[^>]*>/g, '') || '';
-
-    if (!body) {
-      console.log(`[AI] Email ${emailId} has no body content, skipping`);
-      return { success: true, skipped: true, reason: 'no_content' };
-    }
-
-    // Process tasks
-    if (tasks.includes('summarize') || tasks.includes('categorize')) {
-      const result = await aiClient.summarize(subject, body);
-
-      updates.aiSummary = result.summary;
-      updates.aiCategory = result.category;
-      updates.aiPriority = result.priority;
-
-      console.log(`[AI] Summarized email ${emailId}: ${result.category}, ${result.priority}`);
-    }
-
-    if (tasks.includes('suggest-replies')) {
-      const senderName = email.fromName || email.fromAddress;
-      const result = await aiClient.generateReplies(subject, body, senderName);
-
-      if (result.replies.length > 0) {
-        updates.aiSuggestedReplies = JSON.stringify(result.replies);
-        console.log(`[AI] Generated ${result.replies.length} reply suggestions for email ${emailId}`);
-      }
-    }
-
-    // Update email with AI results
-    updates.aiProcessedAt = new Date();
-    updates.updatedAt = new Date();
-
-    await db.update(schema.emails).set(updates).where(eq(schema.emails.id, emailId));
-
-    // Track Usage
-    await db.insert(schema.aiUsage).values({
-      id: generateId(),
-      userId,
-      date: new Date().toISOString().slice(0, 10),
-      emailsProcessed: 1,
-      tokensUsed: 0,
-      estimatedCostCents: 0
-    });
-
-    console.log(`[AI] Processing completed for email ${emailId}`);
-
-    return {
-      success: true,
-      summary: updates.aiSummary ?? undefined,
-      category: updates.aiCategory ?? undefined,
-      priority: updates.aiPriority ?? undefined,
-      hasReplies: !!updates.aiSuggestedReplies,
-    };
-  } catch (error) {
-    console.error(`[AI] Processing failed for email ${emailId}:`, error);
-    throw error;
-  }
+  console.log(`[AI] Skipping AI processing for message ${data.emailId} — no AI keys configured`);
+  return { success: true, skipped: true, reason: 'ai_not_configured' };
 }

@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { EmailList } from '@/components/inbox/email-list';
 import { EmailDisplay } from '@/components/inbox/email-display';
+import { AIBrief } from '@/components/dashboard/ai-brief';
 
 export default function InboxPage() {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
@@ -17,7 +18,9 @@ export default function InboxPage() {
   }, []);
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col h-full">
+      <AIBrief onSelectEmail={handleSelectEmail} />
+      <div className="flex flex-1 min-h-0">
       <div className="w-96 border-r flex flex-col">
         <EmailList
           key={refreshKey}
@@ -30,6 +33,7 @@ export default function InboxPage() {
           emailId={selectedEmailId}
           onEmailUpdated={handleEmailUpdated}
         />
+      </div>
       </div>
     </div>
   );

@@ -57,6 +57,11 @@ export async function withWorkspace<T>(
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
+    // Drop BYPASSRLS privileges for the duration of the tx so RLS policies enforce
+    // tenant isolation even though the pool connects as Supabase's `postgres` role.
+    if (process.env.DATABASE_USE_AUTHENTICATED_ROLE !== 'false') {
+      await client.query('SET LOCAL ROLE authenticated');
+    }
     // set_config(text, text, is_local boolean) is SQL-injection safe via params.
     await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
     const tx = drizzle(client, { schema });

@@ -15,6 +15,7 @@ const GOOGLE_SCOPES = [
   'openid',
   'email',
   'profile',
+  'https://mail.google.com/',
   'https://www.googleapis.com/auth/gmail.modify',
 ].join(' ');
 
@@ -37,33 +38,21 @@ function slugify(input: string): string {
   );
 }
 
-async function ensureUser(opts: {
-  email: string;
-  name?: string | null;
-  image?: string | null;
-}): Promise<string> {
+async function ensureUser(opts: { email: string; name?: string | null }): Promise<string> {
   const existing = await db.query.users.findFirst({
     where: eq(schema.users.email, opts.email),
   });
-  if (existing) {
-    if (opts.image && existing.image !== opts.image) {
-      await db
-        .update(schema.users)
-        .set({ image: opts.image, updatedAt: new Date() })
-        .where(eq(schema.users.id, existing.id));
-    }
-    return existing.id;
-  }
-  const [row] = await db
-    .insert(schema.users)
-    .values({
-      email: opts.email,
-      name: opts.name ?? opts.email.split('@')[0],
-      image: opts.image ?? null,
-      aiEnabled: false,
-    })
-    .returning({ id: schema.users.id });
-  return row.id;
+  if (existing) return existing.id;
+
+  const id = generateId();
+  await db.insert(schema.users).values({
+    id,
+    email: opts.email,
+    name: opts.name ?? opts.email.split('@')[0],
+    passwordHash: '',
+    aiEnabled: false,
+  });
+  return id;
 }
 
 async function ensureWorkspace(userId: string, displayName: string): Promise<string> {
@@ -74,50 +63,47 @@ async function ensureWorkspace(userId: string, displayName: string): Promise<str
 
   const first = displayName.split(' ')[0] || 'my';
   let slug = slugify(`${first}-workspace`);
-  // Make slug unique on collision.
   const clash = await db.query.workspaces.findFirst({
     where: eq(schema.workspaces.slug, slug),
   });
   if (clash) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
 
-  const [ws] = await db
-    .insert(schema.workspaces)
-    .values({
-      slug,
-      name: `${first}'s Workspace`,
-    })
-    .returning({ id: schema.workspaces.id });
+  const workspaceId = generateId();
+  await db.insert(schema.workspaces).values({
+    id: workspaceId,
+    slug,
+    name: `${first}'s Workspace`,
+  });
 
   await db.insert(schema.workspaceMembers).values({
-    workspaceId: ws.id,
+    workspaceId,
     userId,
     role: 'owner',
   });
 
-  return ws.id;
+  return workspaceId;
 }
 
-async function upsertGoogleChannel(opts: {
+async function upsertChannelAccount(opts: {
   workspaceId: string;
   userId: string;
   email: string;
+  provider: 'gmail' | 'outlook';
   account: Account;
 }) {
   if (!opts.account.access_token) return;
+
   const credentials = encryptJSON({
     accessToken: opts.account.access_token,
     refreshToken: opts.account.refresh_token ?? null,
     expiresAt: opts.account.expires_at ?? null,
-    scope: opts.account.scope ?? null,
-    tokenType: opts.account.token_type ?? null,
-    idToken: opts.account.id_token ?? null,
   });
 
   const existing = await db.query.channelAccounts.findFirst({
     where: and(
-      eq(schema.channelAccounts.workspaceId, opts.workspaceId),
-      eq(schema.channelAccounts.provider, 'gmail'),
-      eq(schema.channelAccounts.externalAccountId, opts.email)
+      eq(schema.channelAccounts.userId, opts.userId),
+      eq(schema.channelAccounts.externalAccountId, opts.email),
+      eq(schema.channelAccounts.provider, opts.provider)
     ),
   });
 
@@ -125,11 +111,9 @@ async function upsertGoogleChannel(opts: {
     await db
       .update(schema.channelAccounts)
       .set({
+        workspaceId: opts.workspaceId,
         credentialsEncrypted: credentials,
         status: 'active',
-        userId: opts.userId,
-        displayName: opts.email,
-        scopes: opts.account.scope?.split(' ') ?? null,
         updatedAt: new Date(),
       })
       .where(eq(schema.channelAccounts.id, existing.id));
@@ -137,65 +121,14 @@ async function upsertGoogleChannel(opts: {
   }
 
   await db.insert(schema.channelAccounts).values({
+    id: generateId(),
     workspaceId: opts.workspaceId,
     userId: opts.userId,
-    provider: 'gmail',
     externalAccountId: opts.email,
     displayName: opts.email,
-    status: 'active',
+    provider: opts.provider,
     credentialsEncrypted: credentials,
-    scopes: opts.account.scope?.split(' ') ?? null,
-  });
-}
-
-async function upsertOutlookChannel(opts: {
-  workspaceId: string;
-  userId: string;
-  email: string;
-  account: Account;
-}) {
-  if (!opts.account.access_token) return;
-  const credentials = encryptJSON({
-    accessToken: opts.account.access_token,
-    refreshToken: opts.account.refresh_token ?? null,
-    expiresAt: opts.account.expires_at ?? null,
-    scope: opts.account.scope ?? null,
-    tokenType: opts.account.token_type ?? null,
-    idToken: opts.account.id_token ?? null,
-  });
-
-  const existing = await db.query.channelAccounts.findFirst({
-    where: and(
-      eq(schema.channelAccounts.workspaceId, opts.workspaceId),
-      eq(schema.channelAccounts.provider, 'outlook'),
-      eq(schema.channelAccounts.externalAccountId, opts.email)
-    ),
-  });
-
-  if (existing) {
-    await db
-      .update(schema.channelAccounts)
-      .set({
-        credentialsEncrypted: credentials,
-        status: 'active',
-        userId: opts.userId,
-        displayName: opts.email,
-        scopes: opts.account.scope?.split(' ') ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.channelAccounts.id, existing.id));
-    return;
-  }
-
-  await db.insert(schema.channelAccounts).values({
-    workspaceId: opts.workspaceId,
-    userId: opts.userId,
-    provider: 'outlook',
-    externalAccountId: opts.email,
-    displayName: opts.email,
     status: 'active',
-    credentialsEncrypted: credentials,
-    scopes: opts.account.scope?.split(' ') ?? null,
   });
 }
 
@@ -244,7 +177,7 @@ export const authOptions: NextAuthOptions = {
               if (!user || !user.passwordHash) throw new Error('Invalid credentials');
               const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
               if (!isValid) throw new Error('Invalid credentials');
-              return { id: user.id, email: user.email, name: user.name ?? undefined };
+              return { id: user.id, email: user.email, name: user.name ?? user.email };
             },
           }),
         ]
@@ -281,16 +214,15 @@ export const authOptions: NextAuthOptions = {
         const userId = await ensureUser({
           email,
           name: user.name ?? (profile as any)?.name ?? null,
-          image: (user as any).image ?? (profile as any)?.picture ?? null,
         });
         (user as any).id = userId;
 
         const workspaceId = await ensureWorkspace(userId, user.name || email);
 
         if (account?.provider === 'google') {
-          await upsertGoogleChannel({ workspaceId, userId, email, account });
+          await upsertChannelAccount({ workspaceId, userId, email, provider: 'gmail', account });
         } else if (account?.provider === 'azure-ad') {
-          await upsertOutlookChannel({ workspaceId, userId, email, account });
+          await upsertChannelAccount({ workspaceId, userId, email, provider: 'outlook', account });
         }
 
         return true;
@@ -327,14 +259,13 @@ export async function registerUser(email: string, password: string, name?: strin
   if (existing) throw new Error('User already exists');
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const [row] = await db
-    .insert(schema.users)
-    .values({
-      email,
-      name: name || email.split('@')[0],
-      passwordHash,
-    })
-    .returning({ id: schema.users.id });
+  const id = generateId();
+  await db.insert(schema.users).values({
+    id,
+    email,
+    name: name || email.split('@')[0],
+    passwordHash,
+  });
 
-  return { id: row.id, email, name };
+  return { id, email, name };
 }

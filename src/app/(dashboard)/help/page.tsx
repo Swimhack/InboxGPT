@@ -51,7 +51,7 @@ const faqs: Record<string, FAQItem[]> = {
       question: 'Can I connect Yahoo, iCloud, or other email providers?',
       answer: (
         <div className="space-y-2">
-          <p>Yes! Inbox Pro supports most email providers. For providers like Yahoo, iCloud, and others, you&apos;ll need to use an App Password.</p>
+          <p>Yes! InboxGPT supports most email providers. For providers like Yahoo, iCloud, and others, you&apos;ll need to use an App Password.</p>
           <p>When you enter your email, we&apos;ll detect your provider and show you specific instructions for creating an App Password.</p>
         </div>
       ),
@@ -62,7 +62,7 @@ const faqs: Record<string, FAQItem[]> = {
       question: 'What is an App Password?',
       answer: (
         <div className="space-y-2">
-          <p>An App Password is a special password generated specifically for apps like Inbox Pro to access your email. It&apos;s more secure than using your regular password because:</p>
+          <p>An App Password is a special password generated specifically for apps like InboxGPT to access your email. It&apos;s more secure than using your regular password because:</p>
           <ul className="list-disc ml-4 space-y-1">
             <li>It works even with 2-factor authentication enabled</li>
             <li>You can revoke it anytime without changing your main password</li>
@@ -78,9 +78,9 @@ const faqs: Record<string, FAQItem[]> = {
           <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Google App Passwords <ExternalLink className="h-3 w-3" /></a></li>
           <li>Sign in if prompted</li>
           <li>Select "Mail" for the app and "Other" for the device</li>
-          <li>Enter "Inbox Pro" as the name</li>
+          <li>Enter "InboxGPT" as the name</li>
           <li>Click "Generate" and copy the 16-character password</li>
-          <li>Paste this password in Inbox Pro instead of your regular password</li>
+          <li>Paste this password in InboxGPT instead of your regular password</li>
         </ol>
       ),
     },
@@ -91,9 +91,9 @@ const faqs: Record<string, FAQItem[]> = {
           <li>Go to <a href="https://login.yahoo.com/account/security/app-passwords" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Yahoo App Passwords <ExternalLink className="h-3 w-3" /></a></li>
           <li>Sign in if prompted</li>
           <li>Click "Generate app password"</li>
-          <li>Select "Other App" and enter "Inbox Pro"</li>
+          <li>Select "Other App" and enter "InboxGPT"</li>
           <li>Copy the generated password</li>
-          <li>Paste this password in Inbox Pro</li>
+          <li>Paste this password in InboxGPT</li>
         </ol>
       ),
     },
@@ -104,9 +104,9 @@ const faqs: Record<string, FAQItem[]> = {
           <li>Go to <a href="https://appleid.apple.com/account/manage" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Apple ID Settings <ExternalLink className="h-3 w-3" /></a></li>
           <li>Sign in with your Apple ID</li>
           <li>Go to "Sign-In and Security" → "App-Specific Passwords"</li>
-          <li>Click the + button and enter "Inbox Pro"</li>
+          <li>Click the + button and enter "InboxGPT"</li>
           <li>Copy the generated password</li>
-          <li>Paste this password in Inbox Pro</li>
+          <li>Paste this password in InboxGPT</li>
         </ol>
       ),
     },
@@ -116,7 +116,7 @@ const faqs: Record<string, FAQItem[]> = {
       question: 'What does the AI do with my emails?',
       answer: (
         <div className="space-y-3">
-          <p>Inbox Pro uses AI to help you manage your inbox more efficiently:</p>
+          <p>InboxGPT uses AI to help you manage your inbox more efficiently:</p>
           <div className="grid gap-3">
             <AIFeatureCard feature="summary" />
             <AIFeatureCard feature="category" />
@@ -142,7 +142,7 @@ const faqs: Record<string, FAQItem[]> = {
   'Syncing & Troubleshooting': [
     {
       question: 'How often do emails sync?',
-      answer: 'Inbox Pro syncs your emails every few minutes automatically. You can also click the sync button to trigger an immediate sync.',
+      answer: 'InboxGPT syncs your emails every few minutes automatically. You can also click the sync button to trigger an immediate sync.',
     },
     {
       question: 'My emails aren\'t syncing. What should I do?',
@@ -175,7 +175,7 @@ const faqs: Record<string, FAQItem[]> = {
       question: 'How is my data stored?',
       answer: (
         <div className="space-y-2">
-          <p>Inbox Pro takes your privacy seriously:</p>
+          <p>InboxGPT takes your privacy seriously:</p>
           <ul className="list-disc ml-4 space-y-1">
             <li>All email credentials are encrypted with AES-256</li>
             <li>Your data is stored locally (you control where)</li>
@@ -186,8 +186,8 @@ const faqs: Record<string, FAQItem[]> = {
       ),
     },
     {
-      question: 'Can I self-host Inbox Pro?',
-      answer: 'Yes! Inbox Pro is designed to be self-hosted. You can run it on your own server and keep all your data under your control.',
+      question: 'Can I self-host InboxGPT?',
+      answer: 'Yes! InboxGPT is designed to be self-hosted. You can run it on your own server and keep all your data under your control.',
     },
   ],
 };
@@ -235,7 +235,7 @@ export default function HelpPage() {
             Help & FAQ
           </h1>
           <p className="text-muted-foreground mt-1">
-            Find answers to common questions about Inbox Pro
+            Find answers to common questions about InboxGPT
           </p>
         </div>
 
