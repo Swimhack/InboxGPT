@@ -163,6 +163,10 @@ export const workspaces = pgTable('workspaces', {
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   plan: text('plan').notNull().default('free'),
+  stripeCustomerId: text('stripe_customer_id').unique(),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  stripePriceId: text('stripe_price_id'),
+  planExpiresAt: timestamp('plan_expires_at', { withTimezone: true, mode: 'date' }),
   kekId: text('kek_id').notNull().default('default'),
   dekWrapped: bytea('dek_wrapped'),
   retentionDays: integer('retention_days').notNull().default(3650),
@@ -491,6 +495,22 @@ export const aiUsage = pgTable(
   })
 );
 
+export const briefs = pgTable(
+  'briefs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    briefDate: text('brief_date').notNull(),
+    content: jsonb('content').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => ({
+    wsDateIdx: unique('briefs_ws_date_uq').on(t.workspaceId, t.briefDate),
+  })
+);
+
 export const notificationPreferences = pgTable(
   'notification_preferences',
   {
@@ -591,8 +611,24 @@ export const identitiesRelations = relations(identities, ({ one }) => ({
 }));
 
 // -----------------------------------------------------------------------------
+// Quote leads — public-facing pricing page quote requests (no workspace scope)
+// -----------------------------------------------------------------------------
+export const quoteLeads = pgTable('quote_leads', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  company: text('company'),
+  service: text('service').notNull(),
+  budget: text('budget').notNull(),
+  description: text('description').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+// -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
+export type QuoteLead = typeof quoteLeads.$inferSelect;
+export type NewQuoteLead = typeof quoteLeads.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
