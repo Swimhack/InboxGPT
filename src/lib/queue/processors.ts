@@ -66,9 +66,7 @@ export async function processEmailSync(data: EmailSyncJobData): Promise<{
   if (provider === 'gmail') {
     return syncGmailViaRest(account, type);
   } else if (provider === 'outlook') {
-    // TODO: Outlook Graph API sync — for now skip
-    console.log(`[EmailSync] Outlook sync not yet implemented, skipping`);
-    return { skipped: true, newEmailCount: 0, totalFetched: 0 };
+    return syncOutlookViaGraph(account, type);
   } else if (provider === 'imap') {
     return syncViaImap(account, type);
   } else {
@@ -268,6 +266,143 @@ async function syncGmailViaRest(
 
   console.log(`[EmailSync] Gmail REST: done — ${newEmailCount} new of ${messageIds.length} fetched`);
   return { newEmailCount, totalFetched: messageIds.length };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Microsoft Graph API sync — Outlook / Microsoft 365
+// ────────────────────────────────────────────────────────────────────────────
+
+const GRAPH_API = 'https://graph.microsoft.com/v1.0';
+
+async function getValidOutlookToken(
+  account: typeof schema.channelAccounts.$inferSelect
+): Promise<string> {
+  let creds = decryptJSON<OAuthCredentials>(account.credentialsEncrypted!);
+
+  const isExpired = creds.expiresAt && creds.expiresAt < Date.now() + 5 * 60 * 1000;
+  if (isExpired && creds.refreshToken) {
+    console.log(`[EmailSync] Refreshing expired Outlook token for ${account.id}`);
+    const refreshed = await refreshMicrosoftToken(creds.refreshToken);
+    creds = { ...creds, accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt };
+    await db
+      .update(schema.channelAccounts)
+      .set({ credentialsEncrypted: encryptJSON(creds), updatedAt: new Date() })
+      .where(eq(schema.channelAccounts.id, account.id));
+  }
+
+  return creds.accessToken;
+}
+
+interface GraphMessage {
+  id: string;
+  internetMessageId?: string;
+  subject?: string;
+  bodyPreview?: string;
+  body?: { contentType: string; content: string };
+  from?: { emailAddress: { name?: string; address: string } };
+  toRecipients?: Array<{ emailAddress: { name?: string; address: string } }>;
+  receivedDateTime?: string;
+  sentDateTime?: string;
+  isRead?: boolean;
+  flag?: { flagStatus: string };
+  hasAttachments?: boolean;
+}
+
+async function syncOutlookViaGraph(
+  account: typeof schema.channelAccounts.$inferSelect,
+  type: string
+): Promise<{ newEmailCount: number; totalFetched: number }> {
+  const token = await getValidOutlookToken(account);
+  const limit = type === 'full' ? 200 : 50;
+
+  // Build filter for incremental sync
+  let url = `${GRAPH_API}/me/mailFolders/inbox/messages?$top=${limit}&$select=id,internetMessageId,subject,bodyPreview,body,from,toRecipients,receivedDateTime,sentDateTime,isRead,flag,hasAttachments`;
+  if (type === 'incremental' && account.lastSyncAt) {
+    const iso = account.lastSyncAt.toISOString();
+    url += `&$filter=receivedDateTime ge ${iso}`;
+  }
+  url += `&$orderby=receivedDateTime desc`;
+
+  console.log(`[EmailSync] Outlook Graph: listing messages (type=${type})`);
+
+  const listRes = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!listRes.ok) {
+    const errText = await listRes.text();
+    throw new Error(`Outlook Graph list failed (${listRes.status}): ${errText}`);
+  }
+
+  const listData = await listRes.json();
+  const messages: GraphMessage[] = listData.value ?? [];
+
+  if (messages.length === 0) {
+    console.log(`[EmailSync] Outlook Graph: no messages found`);
+    await db
+      .update(schema.channelAccounts)
+      .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+      .where(eq(schema.channelAccounts.id, account.id));
+    return { newEmailCount: 0, totalFetched: 0 };
+  }
+
+  console.log(`[EmailSync] Outlook Graph: inserting ${messages.length} messages`);
+
+  let newEmailCount = 0;
+  for (const msg of messages) {
+    const fromAddr = msg.from?.emailAddress;
+    const providerMessageId =
+      msg.internetMessageId || `graph-${msg.id}`;
+
+    try {
+      await db
+        .insert(schema.messages)
+        .values({
+          workspaceId: account.workspaceId,
+          channelAccountId: account.id,
+          provider: 'outlook',
+          providerMessageId,
+          direction: 'inbound',
+          fromIdentity: {
+            kind: 'email',
+            value: fromAddr?.address ?? 'unknown',
+            display: fromAddr?.name,
+          },
+          toIdentities: (msg.toRecipients ?? []).map((r) => ({
+            kind: 'email',
+            value: r.emailAddress.address,
+            display: r.emailAddress.name,
+          })),
+          subject: msg.subject || '(No Subject)',
+          bodyText:
+            msg.body?.contentType === 'text' ? msg.body.content : undefined,
+          bodyHtml:
+            msg.body?.contentType === 'html' ? msg.body.content : undefined,
+          snippet: msg.bodyPreview?.slice(0, 200) || undefined,
+          sentAt: msg.sentDateTime ? new Date(msg.sentDateTime) : new Date(),
+          receivedAt: msg.receivedDateTime
+            ? new Date(msg.receivedDateTime)
+            : new Date(),
+          isRead: msg.isRead ?? false,
+          isStarred: msg.flag?.flagStatus === 'flagged',
+          hasAttachments: msg.hasAttachments ?? false,
+        })
+        .onConflictDoNothing();
+      newEmailCount++;
+    } catch {
+      // duplicate or constraint — skip
+    }
+  }
+
+  await db
+    .update(schema.channelAccounts)
+    .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+    .where(eq(schema.channelAccounts.id, account.id));
+
+  console.log(
+    `[EmailSync] Outlook Graph: done — ${newEmailCount} new of ${messages.length} fetched`
+  );
+  return { newEmailCount, totalFetched: messages.length };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
