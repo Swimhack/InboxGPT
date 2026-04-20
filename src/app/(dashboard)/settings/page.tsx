@@ -12,6 +12,7 @@ import { eq } from 'drizzle-orm';
 import { getUserUsage, AI_LIMITS } from '@/lib/ai/limits';
 import { AISettings } from '@/components/settings/ai-settings';
 import { BillingActions } from '@/components/settings/billing-actions';
+import { TeamSettings } from '@/components/settings/team-settings';
 import { PLANS, type PlanId } from '@/lib/stripe/plans';
 
 export default async function SettingsPage() {
@@ -32,6 +33,20 @@ export default async function SettingsPage() {
     .where(eq(schema.workspaces.id, workspace.workspaceId));
   const currentPlan = PLANS[(ws?.plan as PlanId) ?? 'free'] ?? PLANS.free;
 
+  // Fetch workspace members for Team tab
+  const members = await db
+    .select({
+      userId: schema.workspaceMembers.userId,
+      name: schema.users.name,
+      email: schema.users.email,
+      role: schema.workspaceMembers.role,
+    })
+    .from(schema.workspaceMembers)
+    .innerJoin(schema.users, eq(schema.users.id, schema.workspaceMembers.userId))
+    .where(eq(schema.workspaceMembers.workspaceId, workspace.workspaceId));
+
+  const canInvite = ['owner', 'admin'].includes(workspace.role);
+
   const usage = await getUserUsage(user.id);
   const usageInfo = {
     freeUsed: usage.totalEmailsProcessed,
@@ -46,6 +61,7 @@ export default async function SettingsPage() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="ai">AI Settings</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -69,6 +85,10 @@ export default async function SettingsPage() {
               <Button>Save Changes</Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="team">
+          <TeamSettings members={members} canInvite={canInvite} />
         </TabsContent>
 
         <TabsContent value="billing">
