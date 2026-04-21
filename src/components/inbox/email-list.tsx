@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { cn, formatDate, truncate } from '@/lib/utils';
+import { cn, formatDate, truncate, apiUrl } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -70,7 +70,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
       if (accountId) params.set('accountId', accountId);
       if (category) params.set('category', category);
 
-      const res = await fetch(`/api/emails?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/emails?${params.toString()}`));
       if (!res.ok) throw new Error('Failed to fetch emails');
 
       const data = await res.json();
@@ -154,7 +154,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
   const handleStar = async (e: React.MouseEvent, emailId: string, currentStarred: boolean) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/emails/${emailId}`, {
+      const res = await fetch(apiUrl(`/api/emails/${emailId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isStarred: !currentStarred }),
@@ -181,7 +181,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
 
     try {
       const updates = Array.from(selectedEmails).map((id) =>
-        fetch(`/api/emails/${id}`, {
+        fetch(apiUrl(`/api/emails/${id}`), {
           method: action === 'delete' ? 'DELETE' : 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: action === 'archive' ? JSON.stringify({ isArchived: true }) : undefined,
@@ -230,6 +230,7 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
       <div className="p-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Checkbox
+            aria-label="Select all emails"
             checked={emails.length > 0 && selectedEmails.size === emails.length}
             onCheckedChange={(checked) => {
               if (checked) {
@@ -246,15 +247,15 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
         <div className="flex items-center gap-1">
           {selectedEmails.size > 0 && (
             <>
-              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('archive')}>
+              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('archive')} aria-label="Archive selected">
                 <Archive className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('delete')}>
+              <Button variant="ghost" size="icon" onClick={() => handleBulkAction('delete')} aria-label="Delete selected">
                 <Trash2 className="h-4 w-4" />
               </Button>
             </>
           )}
-          <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
+          <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} aria-label="Refresh emails">
             <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
           </Button>
         </div>
@@ -281,9 +282,17 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
             {emails.map((email) => (
               <div
                 key={email.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectEmail?.(email.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectEmail?.(email.id);
+                  }
+                }}
                 className={cn(
-                  'flex items-start gap-3 p-3 cursor-pointer transition-colors',
+                  'flex items-start gap-3 p-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                   selectedEmailId === email.id ? 'bg-secondary' : 'hover:bg-muted/50',
                   !email.isRead && 'bg-primary/5'
                 )}
@@ -295,8 +304,9 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
                   />
                   <button
                     onClick={(e) => handleStar(e, email.id, email.isStarred)}
+                    aria-label={email.isStarred ? 'Unstar email' : 'Star email'}
                     className={cn(
-                      'hover:text-yellow-500 transition-colors',
+                      'hover:text-yellow-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded',
                       email.isStarred ? 'text-yellow-500' : 'text-muted-foreground'
                     )}
                   >

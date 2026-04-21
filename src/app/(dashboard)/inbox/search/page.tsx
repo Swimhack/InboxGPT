@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { cn, formatDate, truncate } from '@/lib/utils';
+import { cn, formatDate, truncate, apiUrl } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,7 +55,7 @@ export default function SearchPage() {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/emails/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(apiUrl(`/api/emails/search?q=${encodeURIComponent(query)}`));
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       setEmails(data.emails || []);
@@ -81,7 +81,7 @@ export default function SearchPage() {
 
   return (
     <div className="flex h-full">
-      <div className="w-96 border-r flex flex-col">
+      <div className={`${selectedEmailId ? 'hidden md:flex' : 'flex'} w-full md:w-96 border-r flex-col`}>
         <div className="p-3 border-b">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" asChild>
@@ -179,7 +179,15 @@ export default function SearchPage() {
         </ScrollArea>
       </div>
 
-      <div className="flex-1">
+      <div className={`${selectedEmailId ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
+        {selectedEmailId && (
+          <div className="md:hidden p-2 border-b">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedEmailId(null)} aria-label="Back to email list">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          </div>
+        )}
         <EmailDisplay emailId={selectedEmailId} onEmailUpdated={fetchResults} />
       </div>
     </div>

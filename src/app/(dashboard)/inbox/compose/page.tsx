@@ -1,7 +1,8 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,33 +20,30 @@ interface Account {
 
 export default function ComposePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
 
   const [form, setForm] = useState({
-    accountId: '',
-    to: '',
+    accountId: searchParams.get('accountId') || '',
+    to: searchParams.get('replyTo') || '',
     cc: '',
     bcc: '',
-    subject: '',
-    body: '',
+    subject: searchParams.get('subject') || '',
+    body: searchParams.get('body') || '',
+    inReplyTo: searchParams.get('inReplyTo') || '',
   });
 
   useEffect(() => {
     async function fetchAccounts() {
       try {
-        const res = await fetch('/api/accounts');
+        const res = await fetch(apiUrl('/api/accounts'));
         const data = await res.json();
-        const accts = (data.accounts || []).map((a: any) => ({
-          id: a.id,
-          email: a.email || a.externalAccountId || '',
-          displayName: a.displayName,
-        }));
-        setAccounts(accts);
-        if (accts.length > 0) {
-          setForm((f) => ({ ...f, accountId: accts[0].id }));
+        setAccounts(data.accounts || []);
+        if (data.accounts?.length > 0 && !form.accountId) {
+          setForm((f) => ({ ...f, accountId: data.accounts[0].id }));
         }
       } catch (error) {
         console.error('Failed to fetch accounts:', error);
@@ -80,7 +78,7 @@ export default function ComposePage() {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/emails/send', {
+      const res = await fetch(apiUrl('/api/emails/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,6 +89,7 @@ export default function ComposePage() {
           subject: form.subject,
           body: form.body,
           isHtml: false,
+          inReplyTo: form.inReplyTo || undefined,
         }),
       });
 
@@ -126,7 +125,7 @@ export default function ComposePage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto h-full overflow-auto">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto overflow-auto h-full">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/inbox">
@@ -185,7 +184,7 @@ export default function ComposePage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cc">CC</Label>
                   <Input

@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { EmailList } from '@/components/inbox/email-list';
 import { EmailDisplay } from '@/components/inbox/email-display';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
 
 export default function CategoryPage() {
   const { category } = useParams<{ category: string }>();
@@ -22,7 +24,7 @@ export default function CategoryPage() {
 
   return (
     <div className="flex h-full">
-      <div className="w-96 border-r flex flex-col">
+      <div className={`${selectedEmailId ? 'hidden md:flex' : 'flex'} w-full md:w-96 border-r flex-col`}>
         <div className="p-3 border-b">
           <h2 className="font-medium">{categoryName}</h2>
           <p className="text-sm text-muted-foreground">Emails categorized as {categoryName.toLowerCase()}</p>
@@ -34,7 +36,15 @@ export default function CategoryPage() {
           selectedEmailId={selectedEmailId}
         />
       </div>
-      <div className="flex-1">
+      <div className={`${selectedEmailId ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
+        {selectedEmailId && (
+          <div className="md:hidden p-2 border-b">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedEmailId(null)} aria-label="Back to email list">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          </div>
+        )}
         <EmailDisplay
           emailId={selectedEmailId}
           onEmailUpdated={handleEmailUpdated}

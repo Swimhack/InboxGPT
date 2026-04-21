@@ -20,13 +20,21 @@ export function QuickReplies({ replies, isLoading, isProcessing, onSelect }: Qui
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const handleCopy = async (reply: string, index: number) => {
-    await navigator.clipboard.writeText(reply);
-    setCopiedIndex(index);
-    toast({
-      title: 'Copied to clipboard',
-      description: 'Reply text has been copied. Paste it into your reply.',
-    });
-    setTimeout(() => setCopiedIndex(null), 2000);
+    try {
+      await navigator.clipboard.writeText(reply);
+      setCopiedIndex(index);
+      toast({
+        title: 'Copied to clipboard',
+        description: 'Reply text has been copied. Paste it into your reply.',
+      });
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch {
+      toast({
+        title: 'Copy failed',
+        description: 'Could not copy to clipboard',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (isLoading) {
@@ -90,15 +98,23 @@ export function QuickReplies({ replies, isLoading, isProcessing, onSelect }: Qui
         {replies.map((reply, index) => (
           <div
             key={index}
-            className="p-3 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors cursor-pointer group"
+            role="button"
+            tabIndex={0}
+            className="p-3 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onSelect?.(reply)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect?.(reply);
+              }
+            }}
           >
             <p className="text-sm line-clamp-3">{reply}</p>
             <div className="flex justify-end mt-2">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCopy(reply, index);

@@ -30,3 +30,7 @@ export function truncate(str: string, length: number): string {
 export function generateId(): string {
   return crypto.randomUUID();
 }
+
+// Base path helper — Next.js doesn't auto-prefix fetch() with basePath
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
+export const apiUrl = (path: string) => `${BASE_PATH}${path}`;

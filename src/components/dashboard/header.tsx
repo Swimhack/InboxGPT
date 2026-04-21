@@ -1,5 +1,6 @@
 'use client';
 
+import { apiUrl } from '@/lib/utils';
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
@@ -17,6 +18,7 @@ import {
 import { Search, RefreshCw, LogOut, User, Settings, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { SidebarTrigger } from '@/components/dashboard/sidebar';
 
 interface HeaderProps {
   user: {
@@ -49,7 +51,7 @@ export function Header({ user }: HeaderProps) {
   const handleSyncAll = useCallback(async () => {
     setIsSyncing(true);
     try {
-      const res = await fetch('/api/sync/all', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/sync/all'), { method: 'POST' });
       if (!res.ok) throw new Error('Failed to sync');
       toast({ title: 'Sync started', description: 'Syncing all accounts...' });
     } catch (error) {
@@ -65,11 +67,13 @@ export function Header({ user }: HeaderProps) {
 
   return (
     <header className="h-14 border-b flex items-center justify-between px-4 bg-background">
-      <div className="flex items-center gap-4 flex-1">
-        <form onSubmit={handleSearch} className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <SidebarTrigger />
+        <form onSubmit={handleSearch} className="relative max-w-md flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <Input
             placeholder="Search emails..."
+            aria-label="Search emails"
             className="pl-10 w-full"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -81,7 +85,7 @@ export function Header({ user }: HeaderProps) {
         <Button
           variant="ghost"
           size="icon"
-          title="Sync all accounts"
+          aria-label="Sync all accounts"
           onClick={handleSyncAll}
           disabled={isSyncing}
         >
@@ -108,12 +112,6 @@ export function Header({ user }: HeaderProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <User className="mr-2 h-4 w-4" />
-                Profile
-              </Link>
-            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/settings">
                 <Settings className="mr-2 h-4 w-4" />

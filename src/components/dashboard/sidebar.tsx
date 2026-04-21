@@ -18,7 +18,10 @@ import {
   PlusCircle,
   Mail,
   HelpCircle,
+  Menu,
+  X,
 } from 'lucide-react';
+import { useState, useEffect, createContext, useContext } from 'react';
 
 const mainNav = [
   { href: '/inbox', label: 'Inbox', icon: Inbox },
@@ -36,13 +39,32 @@ const categories = [
   { label: 'Updates', color: 'bg-purple-500' },
 ];
 
-export function Sidebar() {
+// Context so header can toggle sidebar
+const SidebarContext = createContext<{ open: boolean; setOpen: (v: boolean) => void }>({
+  open: false,
+  setOpen: () => {},
+});
+
+export function useSidebar() {
+  return useContext(SidebarContext);
+}
+
+export function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <SidebarContext.Provider value={{ open, setOpen }}>
+      {children}
+    </SidebarContext.Provider>
+  );
+}
+
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <div className="w-64 border-r bg-muted/30 flex flex-col">
+    <>
       <div className="p-4">
-        <Link href="/inbox" className="flex items-center gap-2">
+        <Link href="/inbox" className="flex items-center gap-2" onClick={onNavigate}>
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
             <Mail className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -52,7 +74,7 @@ export function Sidebar() {
 
       <div className="px-3 pb-4">
         <Button className="w-full" asChild>
-          <Link href="/inbox/compose">
+          <Link href="/inbox/compose" onClick={onNavigate}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Compose
           </Link>
@@ -65,6 +87,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                 pathname === item.href
@@ -89,6 +112,7 @@ export function Sidebar() {
               <Link
                 key={category.label}
                 href={`/inbox/category/${category.label.toLowerCase()}`}
+                onClick={onNavigate}
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"
               >
                 <Tag className="h-4 w-4" />
@@ -107,6 +131,7 @@ export function Sidebar() {
           </h3>
           <Link
             href="/accounts"
+            onClick={onNavigate}
             className={cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
               pathname === '/accounts'
@@ -125,6 +150,7 @@ export function Sidebar() {
       <div className="p-3 space-y-1">
         <Link
           href="/help"
+          onClick={onNavigate}
           className={cn(
             'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
             pathname === '/help'
@@ -137,6 +163,7 @@ export function Sidebar() {
         </Link>
         <Link
           href="/settings"
+          onClick={onNavigate}
           className={cn(
             'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
             pathname === '/settings'
@@ -148,6 +175,68 @@ export function Sidebar() {
           Settings
         </Link>
       </div>
-    </div>
+    </>
+  );
+}
+
+export function Sidebar() {
+  const { open, setOpen } = useSidebar();
+  const pathname = usePathname();
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, setOpen]);
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex w-64 border-r bg-muted/30 flex-col">
+        <SidebarContent />
+      </div>
+
+      {/* Mobile overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Mobile drawer */}
+      <div
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-72 bg-background border-r flex flex-col transition-transform duration-200 ease-in-out md:hidden',
+          open ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        <div className="absolute right-2 top-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setOpen(false)}
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <SidebarContent onNavigate={() => setOpen(false)} />
+      </div>
+    </>
+  );
+}
+
+export function SidebarTrigger() {
+  const { setOpen } = useSidebar();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="md:hidden"
+      onClick={() => setOpen(true)}
+      aria-label="Open menu"
+    >
+      <Menu className="h-5 w-5" />
+    </Button>
   );
 }
