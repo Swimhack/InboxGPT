@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   const verify = verifyTwilio({ url, params, signature });
   if (!verify.ok) {
-    return new NextResponse(`invalid signature: ${verify.reason}`, { status: 401 });
+    return new NextResponse(`invalid signature: ${verify.reason}`, { status: 403 });
   }
 
   const eventId = params.MessageSid || params.CallSid || `twilio-${Date.now()}`;
