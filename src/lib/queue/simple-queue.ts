@@ -22,8 +22,12 @@ export interface AIProcessingJobData {
   tasks: Array<'summarize' | 'categorize' | 'suggest-replies'>;
 }
 
-export type JobType = 'email-sync' | 'ai-processing';
-export type JobData = EmailSyncJobData | AIProcessingJobData;
+export interface NormalizeInboundJobData {
+  webhookEventId: string;
+}
+
+export type JobType = 'email-sync' | 'ai-processing' | 'normalize-inbound';
+export type JobData = EmailSyncJobData | AIProcessingJobData | NormalizeInboundJobData;
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 // Add a job to the queue
@@ -157,6 +161,7 @@ export async function getQueueStats(): Promise<{
     byType: {
       'email-sync': { pending: 0, processing: 0 },
       'ai-processing': { pending: 0, processing: 0 },
+      'normalize-inbound': { pending: 0, processing: 0 },
     } as Record<JobType, { pending: number; processing: number }>,
   };
 

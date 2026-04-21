@@ -14,8 +14,9 @@ import {
   getQueueStats,
   type EmailSyncJobData,
   type AIProcessingJobData,
+  type NormalizeInboundJobData,
 } from './simple-queue';
-import { processEmailSync, processAIJob } from './processors';
+import { processEmailSync, processAIJob, processNormalizeInbound } from './processors';
 
 let isRunning = false;
 let workerInterval: NodeJS.Timeout | null = null;
@@ -31,8 +32,12 @@ let lastAIJobTime = 0;
  * Process a single job
  */
 async function processJob(): Promise<boolean> {
-  // Get next job, prioritizing email-sync over ai-processing
-  let job = await getNextJob('email-sync');
+  // Priority order: normalize-inbound (real-time) → email-sync → ai-processing
+  let job = await getNextJob('normalize-inbound');
+
+  if (!job) {
+    job = await getNextJob('email-sync');
+  }
 
   if (!job) {
     // Check AI rate limit before processing AI jobs
@@ -52,7 +57,10 @@ async function processJob(): Promise<boolean> {
     // Handle legacy double-encoded jobs gracefully.
     const data = typeof job.data === 'string' ? JSON.parse(job.data) : job.data;
 
-    if (job.type === 'email-sync') {
+    if (job.type === 'normalize-inbound') {
+      const result = await processNormalizeInbound(data as NormalizeInboundJobData);
+      await completeJob(job.id, result);
+    } else if (job.type === 'email-sync') {
       const result = await processEmailSync(data as EmailSyncJobData);
       await completeJob(job.id, result);
     } else if (job.type === 'ai-processing') {

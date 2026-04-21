@@ -1,15 +1,16 @@
 /**
- * Job processors — handles email sync and AI processing.
+ * Job processors — handles email sync, AI processing, and inbound normalization.
  * Runs in-process via the simple-queue worker.
  */
 
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { decryptJSON, encryptJSON } from '../crypto/encryption';
 import { refreshGoogleToken, refreshMicrosoftToken } from '../email/token-refresh';
-import type { EmailSyncJobData, AIProcessingJobData } from './simple-queue';
+import { twilioAdapter } from '../channels/twilio';
+import type { EmailSyncJobData, AIProcessingJobData, NormalizeInboundJobData } from './simple-queue';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Credential shapes stored in channelAccounts.credentialsEncrypted
@@ -510,4 +511,186 @@ export async function processAIJob(data: AIProcessingJobData): Promise<{
 }> {
   console.log(`[AI] Skipping AI processing for message ${data.emailId} — no AI keys configured`);
   return { success: true, skipped: true, reason: 'ai_not_configured' };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// processNormalizeInbound — converts a raw webhook event into a messages row
+// Supports: twilio (SMS/voicemail). Extend the provider switch for others.
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function processNormalizeInbound(data: NormalizeInboundJobData): Promise<{
+  success: boolean;
+  messageId?: string;
+  duplicate?: boolean;
+  skipped?: boolean;
+  reason?: string;
+}> {
+  const { webhookEventId } = data;
+  console.log(`[NormalizeInbound] Processing webhook event ${webhookEventId}`);
+
+  // 1. Load the webhook event row
+  const [event] = await db
+    .select()
+    .from(schema.webhookEvents)
+    .where(eq(schema.webhookEvents.id, webhookEventId));
+
+  if (!event) {
+    console.warn(`[NormalizeInbound] Webhook event ${webhookEventId} not found`);
+    return { success: false, reason: 'webhook_event_not_found' };
+  }
+
+  if (event.processedAt) {
+    console.log(`[NormalizeInbound] Event ${webhookEventId} already processed — skipping`);
+    return { success: true, duplicate: true, skipped: true };
+  }
+
+  // 2. Resolve the adapter and normalize the payload
+  let normalized;
+  try {
+    if (event.provider === 'twilio') {
+      normalized = twilioAdapter.normalizeInbound(event.payload);
+    } else {
+      console.warn(`[NormalizeInbound] No adapter for provider ${event.provider}`);
+      return { success: false, reason: `no_adapter_for_${event.provider}` };
+    }
+  } catch (err) {
+    console.error(`[NormalizeInbound] normalizeInbound threw for event ${webhookEventId}:`, err);
+    return { success: false, reason: `normalize_error: ${(err as Error).message}` };
+  }
+
+  if (!normalized) {
+    console.warn(`[NormalizeInbound] normalizeInbound returned null for event ${webhookEventId}`);
+    await db
+      .update(schema.webhookEvents)
+      .set({ processedAt: new Date(), error: 'normalizeInbound returned null' })
+      .where(eq(schema.webhookEvents.id, webhookEventId));
+    return { success: false, reason: 'normalize_returned_null' };
+  }
+
+  // 3. Find the channelAccount by provider + To phone number
+  //    Twilio sends To = the receiving phone (our registered number = externalAccountId)
+  const payload = event.payload as Record<string, string>;
+  const toPhone = payload.To as string | undefined;
+
+  if (!toPhone) {
+    console.warn(`[NormalizeInbound] No To field in Twilio payload for event ${webhookEventId}`);
+    await db
+      .update(schema.webhookEvents)
+      .set({ processedAt: new Date(), error: 'no To phone in payload' })
+      .where(eq(schema.webhookEvents.id, webhookEventId));
+    return { success: false, reason: 'no_to_phone' };
+  }
+
+  const [account] = await db
+    .select()
+    .from(schema.channelAccounts)
+    .where(
+      and(
+        eq(schema.channelAccounts.provider, 'twilio'),
+        eq(schema.channelAccounts.externalAccountId, toPhone)
+      )
+    );
+
+  if (!account) {
+    console.warn(`[NormalizeInbound] No channelAccount for twilio phone ${toPhone}`);
+    await db
+      .update(schema.webhookEvents)
+      .set({ processedAt: new Date(), error: `no channelAccount for ${toPhone}` })
+      .where(eq(schema.webhookEvents.id, webhookEventId));
+    return { success: false, reason: 'no_channel_account' };
+  }
+
+  const workspaceId = account.workspaceId;
+
+  // 4. Upsert thread — keyed by (workspaceId, channelAccountId, participantKey)
+  //    participantKey = threadKey from normalizer = From E.164 phone for SMS
+  const participantKey = normalized.threadKey ?? normalized.from.value;
+
+  const [existingThread] = await db
+    .select({ id: schema.threads.id, unreadCount: schema.threads.unreadCount })
+    .from(schema.threads)
+    .where(
+      and(
+        eq(schema.threads.workspaceId, workspaceId),
+        eq(schema.threads.channelAccountId, account.id),
+        eq(schema.threads.participantKey, participantKey)
+      )
+    );
+
+  let threadId: string;
+
+  if (existingThread) {
+    threadId = existingThread.id;
+    // Update thread snippet + lastMessageAt + unreadCount
+    await db
+      .update(schema.threads)
+      .set({
+        snippet: normalized.snippet ?? normalized.bodyText?.slice(0, 200),
+        lastMessageAt: normalized.receivedAt,
+        unreadCount: existingThread.unreadCount + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.threads.id, threadId));
+  } else {
+    const [newThread] = await db
+      .insert(schema.threads)
+      .values({
+        workspaceId,
+        channelAccountId: account.id,
+        participantKey,
+        subject: normalized.subject,
+        snippet: normalized.snippet ?? normalized.bodyText?.slice(0, 200),
+        lastMessageAt: normalized.receivedAt,
+        unreadCount: 1,
+      })
+      .returning({ id: schema.threads.id });
+    threadId = newThread.id;
+  }
+
+  // 5. Insert message (idempotent via unique index on workspaceId+provider+providerMessageId)
+  const [inserted] = await db
+    .insert(schema.messages)
+    .values({
+      workspaceId,
+      threadId,
+      channelAccountId: account.id,
+      provider: 'twilio',
+      providerMessageId: normalized.providerMessageId,
+      direction: normalized.direction,
+      fromIdentity: normalized.from,
+      toIdentities: normalized.to,
+      subject: normalized.subject,
+      bodyText: normalized.bodyText,
+      snippet: normalized.snippet,
+      receivedAt: normalized.receivedAt,
+      sentAt: normalized.sentAt ?? normalized.receivedAt,
+      raw: normalized.raw as Record<string, unknown>,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.messages.id });
+
+  const messageId = inserted?.id;
+  const duplicate = !messageId;
+
+  // 6. Mark webhook event as processed
+  await db
+    .update(schema.webhookEvents)
+    .set({
+      processedAt: new Date(),
+      workspaceId,
+      error: null,
+    })
+    .where(eq(schema.webhookEvents.id, webhookEventId));
+
+  // 7. Update channelAccount.lastSyncAt
+  await db
+    .update(schema.channelAccounts)
+    .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+    .where(eq(schema.channelAccounts.id, account.id));
+
+  console.log(
+    `[NormalizeInbound] Event ${webhookEventId} → message ${messageId ?? '(duplicate)'} in thread ${threadId}`
+  );
+
+  return { success: true, messageId, duplicate };
 }
