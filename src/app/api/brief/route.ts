@@ -28,6 +28,14 @@ export async function POST(req: Request) {
     }
 
     console.error('[Brief] Generation failed:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+
+    // Never leak internal driver errors (e.g. "SQLite3 can only bind…" or
+    // Postgres syntax exceptions) into the UI. Users see "Brief unavailable"
+    // and can dismiss / retry.
+    const safeMessage = /sqlite|pg|postgres|bind|no such (table|column)/i.test(message)
+      ? 'Brief is temporarily unavailable. Please try again in a minute.'
+      : message;
+
+    return NextResponse.json({ error: safeMessage }, { status: 500 });
   }
 }

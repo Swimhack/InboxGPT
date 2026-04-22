@@ -1,5 +1,5 @@
 import { db, schema } from '../db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { canProcessWithAI } from './limits';
 import { AIClient, type AIClientConfig, type BriefResult } from './client';
 import { buildBriefPrompt, type BriefEmailData } from './prompts';
@@ -7,14 +7,34 @@ import { decrypt } from '../crypto/encryption';
 
 export type { BriefResult };
 
-export async function generateBriefForUser(userId: string, timezone?: string): Promise<BriefResult> {
-  // Check AI quota
+/**
+ * Extract a human-readable display name + email address from the
+ * Track-A `messages.from_identity` JSONB payload.
+ *
+ * Shape: `{ kind: 'email' | 'phone' | 'handle'; value: string; display?: string }`
+ */
+function splitFromIdentity(
+  identity: unknown
+): { display: string | null; address: string | null } {
+  if (!identity || typeof identity !== 'object') {
+    return { display: null, address: null };
+  }
+  const id = identity as { display?: string; value?: string };
+  return {
+    display: typeof id.display === 'string' ? id.display : null,
+    address: typeof id.value === 'string' ? id.value : null,
+  };
+}
+
+export async function generateBriefForUser(
+  userId: string,
+  timezone?: string
+): Promise<BriefResult> {
   const limitStatus = await canProcessWithAI(userId);
   if (!limitStatus.allowed) {
     throw new Error(limitStatus.reason || 'AI processing not available');
   }
 
-  // Get user info
   const user = await db.query.users.findFirst({
     where: eq(schema.users.id, userId),
     columns: { name: true, userAnthropicKey: true, userOpenaiKey: true },
@@ -24,7 +44,6 @@ export async function generateBriefForUser(userId: string, timezone?: string): P
     throw new Error('User not found');
   }
 
-  // Determine API key
   let aiConfig: AIClientConfig | undefined;
   if (!limitStatus.useFounderKey) {
     if (user.userAnthropicKey) {
@@ -34,51 +53,102 @@ export async function generateBriefForUser(userId: string, timezone?: string): P
     }
   }
 
-  // Get connected accounts
-  const accounts = await db.query.emailAccounts.findMany({
-    where: eq(schema.emailAccounts.userId, userId),
-    columns: { id: true, email: true, displayName: true },
+  // Resolve the user's primary workspace. Messages + channel_accounts in
+  // Track A are workspace-scoped, not user-scoped, so we always need a
+  // workspace id before querying.
+  const membership = await db.query.workspaceMembers.findFirst({
+    where: eq(schema.workspaceMembers.userId, userId),
+    columns: { workspaceId: true },
+    orderBy: [schema.workspaceMembers.createdAt],
   });
 
-  const accountEmails = accounts.map((a) => a.email);
-  const accountMap = new Map(accounts.map((a) => [a.id, a.email]));
+  if (!membership) {
+    // No workspace yet -> return an empty-but-valid brief instead of
+    // throwing, so the UI can render a friendly empty state.
+    return emptyBrief(user.name || '');
+  }
 
-  // Get recent unread emails
-  const recentEmails = await db.query.emails.findMany({
-    where: and(
-      eq(schema.emails.userId, userId),
-      eq(schema.emails.isRead, false),
-      eq(schema.emails.isDeleted, false),
-      eq(schema.emails.isArchived, false),
-    ),
-    orderBy: [desc(schema.emails.receivedAt)],
-    limit: 50,
-    columns: {
-      subject: true,
-      fromAddress: true,
-      fromName: true,
-      snippet: true,
-      aiCategory: true,
-      aiPriority: true,
-      receivedAt: true,
-      accountId: true,
-    },
+  const workspaceId = membership.workspaceId;
+
+  const accounts = await db
+    .select({
+      id: schema.channelAccounts.id,
+      displayName: schema.channelAccounts.displayName,
+      externalAccountId: schema.channelAccounts.externalAccountId,
+    })
+    .from(schema.channelAccounts)
+    .where(eq(schema.channelAccounts.workspaceId, workspaceId));
+
+  const accountEmails = accounts
+    .map((a) => a.displayName || a.externalAccountId)
+    .filter((v): v is string => Boolean(v));
+  const accountMap = new Map(
+    accounts.map((a) => [a.id, a.displayName || a.externalAccountId || 'unknown'])
+  );
+
+  // Boolean columns are bound as SQL integer literals (0/1) so this works
+  // against better-sqlite3 even though the schema is declared with pg-core
+  // `boolean(...)`. better-sqlite3 refuses to bind raw JS booleans with
+  // "SQLite3 can only bind numbers, strings, bigints, buffers, and null".
+  const recentEmails = await db
+    .select({
+      subject: schema.messages.subject,
+      snippet: schema.messages.snippet,
+      fromIdentity: schema.messages.fromIdentity,
+      aiCategory: schema.messages.aiCategory,
+      aiPriority: schema.messages.aiPriority,
+      receivedAt: schema.messages.receivedAt,
+      channelAccountId: schema.messages.channelAccountId,
+    })
+    .from(schema.messages)
+    .where(
+      and(
+        eq(schema.messages.workspaceId, workspaceId),
+        eq(schema.messages.direction, 'inbound'),
+        sql`${schema.messages.isRead} = 0`,
+        sql`${schema.messages.isDeleted} = 0`
+      )
+    )
+    .orderBy(desc(schema.messages.receivedAt))
+    .limit(50);
+
+  const emailData: BriefEmailData[] = recentEmails.map((e) => {
+    const { display, address } = splitFromIdentity(e.fromIdentity);
+    const receivedAt =
+      e.receivedAt instanceof Date
+        ? e.receivedAt.toISOString()
+        : typeof e.receivedAt === 'string'
+          ? e.receivedAt
+          : 'unknown';
+
+    return {
+      subject: e.subject || '(No Subject)',
+      from: display || address || 'Unknown sender',
+      snippet: e.snippet || '',
+      category: e.aiCategory || 'primary',
+      priority: e.aiPriority || 'normal',
+      receivedAt,
+      account: e.channelAccountId ? accountMap.get(e.channelAccountId) || 'unknown' : 'unknown',
+    };
   });
 
-  // Build email data for prompt
-  const emailData: BriefEmailData[] = recentEmails.map((e) => ({
-    subject: e.subject || '(No Subject)',
-    from: e.fromName || e.fromAddress,
-    snippet: e.snippet || '',
-    category: e.aiCategory || 'primary',
-    priority: e.aiPriority || 'normal',
-    receivedAt: e.receivedAt?.toISOString() || 'unknown',
-    account: accountMap.get(e.accountId) || 'unknown',
-  }));
+  if (emailData.length === 0) {
+    return emptyBrief(user.name || '');
+  }
 
-  // Build prompt and generate brief
   const prompt = buildBriefPrompt(user.name || '', accountEmails, emailData, timezone);
   const aiClient = new AIClient(aiConfig);
 
   return aiClient.generateBrief(prompt);
+}
+
+function emptyBrief(name: string): BriefResult {
+  const first = name.split(/\s+/)[0] || '';
+  const greeting = first ? `Hey ${first}, your inbox is clear.` : 'Your inbox is clear.';
+  return {
+    greeting,
+    summary: 'No unread messages right now.',
+    sections: [],
+    actionItems: [],
+  };
 }

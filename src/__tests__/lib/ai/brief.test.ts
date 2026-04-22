@@ -1,23 +1,50 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock dependencies before importing
+// Mock DB. The Track-A rewrite of brief.ts uses:
+//   - db.query.users.findFirst           (user info)
+//   - db.query.workspaceMembers.findFirst (resolve workspace)
+//   - db.select(...).from(channelAccounts) (connected accounts)
+//   - db.select(...).from(messages)        (recent unread inbound)
+const makeSelectBuilder = (rows: any) => ({
+  from: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  orderBy: vi.fn().mockReturnThis(),
+  limit: vi.fn().mockImplementation(() => Promise.resolve(rows)),
+  // The accounts query resolves after .where() — support both shapes.
+  then: (res: any, rej: any) => Promise.resolve(rows).then(res, rej),
+});
+
+const mockSelect = vi.fn();
+
 vi.mock('@/lib/db', () => ({
   db: {
     query: {
       users: { findFirst: vi.fn() },
-      emailAccounts: { findMany: vi.fn() },
-      emails: { findMany: vi.fn() },
+      workspaceMembers: { findFirst: vi.fn() },
     },
+    select: (..._args: unknown[]) => mockSelect(..._args),
   },
   schema: {
     users: { id: 'id' },
-    emailAccounts: { userId: 'user_id' },
-    emails: {
-      userId: 'user_id',
+    workspaceMembers: { userId: 'user_id', createdAt: 'created_at' },
+    channelAccounts: {
+      id: 'id',
+      displayName: 'display_name',
+      externalAccountId: 'external_account_id',
+      workspaceId: 'workspace_id',
+    },
+    messages: {
+      subject: 'subject',
+      snippet: 'snippet',
+      fromIdentity: 'from_identity',
+      aiCategory: 'ai_category',
+      aiPriority: 'ai_priority',
+      receivedAt: 'received_at',
+      channelAccountId: 'channel_account_id',
+      workspaceId: 'workspace_id',
+      direction: 'direction',
       isRead: 'is_read',
       isDeleted: 'is_deleted',
-      isArchived: 'is_archived',
-      receivedAt: 'received_at',
     },
   },
 }));
@@ -44,13 +71,13 @@ import { generateBriefForUser } from '@/lib/ai/brief';
 import { db } from '@/lib/db';
 import { canProcessWithAI } from '@/lib/ai/limits';
 
-// Get the mock function from the module
 const aiClientModule = await import('@/lib/ai/client');
 const mockGenerateBrief = (aiClientModule as any).__mockGenerateBrief;
 
 describe('generateBriefForUser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSelect.mockReset();
   });
 
   it('throws when AI processing is not allowed', async () => {
@@ -64,48 +91,67 @@ describe('generateBriefForUser', () => {
   });
 
   it('throws when user is not found', async () => {
-    vi.mocked(canProcessWithAI).mockResolvedValue({
-      allowed: true,
-      useFounderKey: true,
-    });
+    vi.mocked(canProcessWithAI).mockResolvedValue({ allowed: true, useFounderKey: true });
     vi.mocked(db.query.users.findFirst).mockResolvedValue(undefined);
 
     await expect(generateBriefForUser('user-1')).rejects.toThrow('User not found');
   });
 
-  it('generates a brief with founder key', async () => {
-    vi.mocked(canProcessWithAI).mockResolvedValue({
-      allowed: true,
-      useFounderKey: true,
-    });
-
+  it('returns an empty brief when user has no workspace', async () => {
+    vi.mocked(canProcessWithAI).mockResolvedValue({ allowed: true, useFounderKey: true });
     vi.mocked(db.query.users.findFirst).mockResolvedValue({
       name: 'James',
       userAnthropicKey: null,
       userOpenaiKey: null,
     } as any);
+    vi.mocked(db.query.workspaceMembers.findFirst).mockResolvedValue(undefined);
 
-    vi.mocked(db.query.emailAccounts.findMany).mockResolvedValue([
-      { id: 'acc-1', email: 'james@example.com', displayName: 'James' },
-    ] as any);
+    const result = await generateBriefForUser('user-1');
+    expect(result.greeting).toMatch(/James/);
+    expect(result.sections).toEqual([]);
+    expect(result.actionItems).toEqual([]);
+    expect(mockGenerateBrief).not.toHaveBeenCalled();
+  });
 
-    vi.mocked(db.query.emails.findMany).mockResolvedValue([
+  it('generates a brief with founder key for inbound unread messages', async () => {
+    vi.mocked(canProcessWithAI).mockResolvedValue({ allowed: true, useFounderKey: true });
+    vi.mocked(db.query.users.findFirst).mockResolvedValue({
+      name: 'James',
+      userAnthropicKey: null,
+      userOpenaiKey: null,
+    } as any);
+    vi.mocked(db.query.workspaceMembers.findFirst).mockResolvedValue({ workspaceId: 'ws-1' } as any);
+
+    const accountRows = [
+      { id: 'acc-1', displayName: 'James', externalAccountId: 'james@example.com' },
+    ];
+    const messageRows = [
       {
         subject: 'Test email',
-        fromAddress: 'alice@example.com',
-        fromName: 'Alice',
         snippet: 'Hello James',
+        fromIdentity: { kind: 'email', value: 'alice@example.com', display: 'Alice' },
         aiCategory: 'primary',
         aiPriority: 'normal',
         receivedAt: new Date('2026-04-17T10:00:00Z'),
-        accountId: 'acc-1',
+        channelAccountId: 'acc-1',
       },
-    ] as any);
+    ];
+
+    mockSelect
+      .mockReturnValueOnce(makeSelectBuilder(accountRows))
+      .mockReturnValueOnce(makeSelectBuilder(messageRows));
 
     const expectedBrief = {
       greeting: 'Good morning, James!',
       summary: '1 unread email',
-      sections: [{ title: 'Updates', items: [{ subject: 'Test email', from: 'Alice', summary: 'Hello', priority: 'normal' }] }],
+      sections: [
+        {
+          title: 'Updates',
+          items: [
+            { subject: 'Test email', from: 'Alice', summary: 'Hello', priority: 'normal' },
+          ],
+        },
+      ],
       actionItems: [],
     };
 
@@ -116,34 +162,22 @@ describe('generateBriefForUser', () => {
     expect(mockGenerateBrief).toHaveBeenCalledOnce();
   });
 
-  it('returns empty sections when no unread emails', async () => {
-    vi.mocked(canProcessWithAI).mockResolvedValue({
-      allowed: true,
-      useFounderKey: true,
-    });
-
+  it('returns the empty-inbox brief when there are no unread messages', async () => {
+    vi.mocked(canProcessWithAI).mockResolvedValue({ allowed: true, useFounderKey: true });
     vi.mocked(db.query.users.findFirst).mockResolvedValue({
       name: 'James',
       userAnthropicKey: null,
       userOpenaiKey: null,
     } as any);
+    vi.mocked(db.query.workspaceMembers.findFirst).mockResolvedValue({ workspaceId: 'ws-1' } as any);
 
-    vi.mocked(db.query.emailAccounts.findMany).mockResolvedValue([
-      { id: 'acc-1', email: 'james@example.com', displayName: 'James' },
-    ] as any);
-
-    vi.mocked(db.query.emails.findMany).mockResolvedValue([]);
-
-    const expectedBrief = {
-      greeting: 'Good morning, James!',
-      summary: 'Inbox is clear',
-      sections: [],
-      actionItems: [],
-    };
-
-    mockGenerateBrief.mockResolvedValue(expectedBrief);
+    mockSelect
+      .mockReturnValueOnce(makeSelectBuilder([]))
+      .mockReturnValueOnce(makeSelectBuilder([]));
 
     const result = await generateBriefForUser('user-1');
     expect(result.sections).toEqual([]);
+    expect(result.summary).toMatch(/No unread/i);
+    expect(mockGenerateBrief).not.toHaveBeenCalled();
   });
 });
