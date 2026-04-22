@@ -29,6 +29,31 @@ export async function POST(req: Request) {
 
     console.error('[Brief] Generation failed:', error);
 
+    // Stored AI key could not be decrypted -> actionable 400 so the UI can
+    // point the user at Settings rather than showing a generic 500.
+    if (message.startsWith('STORED_AI_KEY_INVALID')) {
+      return NextResponse.json(
+        {
+          error:
+            'Your saved AI API key could not be read. Please re-enter it in Settings.',
+          code: 'STORED_AI_KEY_INVALID',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Raw AES-GCM failure (safety net in case a different path leaks it).
+    if (/unsupported state|unable to authenticate data/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            'Stored credentials could not be decrypted. Please re-enter your AI API key in Settings.',
+          code: 'DECRYPT_FAILED',
+        },
+        { status: 400 }
+      );
+    }
+
     // Never leak internal driver errors (e.g. "SQLite3 can only bind…" or
     // Postgres syntax exceptions) into the UI. Users see "Brief unavailable"
     // and can dismiss / retry.

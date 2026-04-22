@@ -46,10 +46,22 @@ export async function generateBriefForUser(
 
   let aiConfig: AIClientConfig | undefined;
   if (!limitStatus.useFounderKey) {
-    if (user.userAnthropicKey) {
-      aiConfig = { provider: 'anthropic', apiKey: decrypt(user.userAnthropicKey) };
-    } else if (user.userOpenaiKey) {
-      aiConfig = { provider: 'openai', apiKey: decrypt(user.userOpenaiKey) };
+    try {
+      if (user.userAnthropicKey) {
+        aiConfig = { provider: 'anthropic', apiKey: decrypt(user.userAnthropicKey) };
+      } else if (user.userOpenaiKey) {
+        aiConfig = { provider: 'openai', apiKey: decrypt(user.userOpenaiKey) };
+      }
+    } catch (err) {
+      // AES-GCM auth tag failure almost always means the row was encrypted
+      // with a different ENCRYPTION_KEY than the one currently in env
+      // (common after key rotation or migrating between hosts). Surface a
+      // clear, actionable message instead of the raw crypto error.
+      console.error('[Brief] Failed to decrypt stored AI key for user', userId, err);
+      throw new Error(
+        'STORED_AI_KEY_INVALID: Your saved AI API key could not be read. ' +
+          'Please re-enter it in Settings.'
+      );
     }
   }
 
