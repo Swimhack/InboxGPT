@@ -1,5 +1,5 @@
 import { db, schema } from '../db';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { canProcessWithAI } from './limits';
 import { AIClient, type AIClientConfig, type BriefResult } from './client';
 import { buildBriefPrompt, type BriefEmailData } from './prompts';
@@ -86,10 +86,6 @@ export async function generateBriefForUser(
     accounts.map((a) => [a.id, a.displayName || a.externalAccountId || 'unknown'])
   );
 
-  // Boolean columns are bound as SQL integer literals (0/1) so this works
-  // against better-sqlite3 even though the schema is declared with pg-core
-  // `boolean(...)`. better-sqlite3 refuses to bind raw JS booleans with
-  // "SQLite3 can only bind numbers, strings, bigints, buffers, and null".
   const recentEmails = await db
     .select({
       subject: schema.messages.subject,
@@ -105,8 +101,8 @@ export async function generateBriefForUser(
       and(
         eq(schema.messages.workspaceId, workspaceId),
         eq(schema.messages.direction, 'inbound'),
-        sql`${schema.messages.isRead} = 0`,
-        sql`${schema.messages.isDeleted} = 0`
+        eq(schema.messages.isRead, false),
+        eq(schema.messages.isDeleted, false)
       )
     )
     .orderBy(desc(schema.messages.receivedAt))

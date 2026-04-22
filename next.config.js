@@ -5,11 +5,14 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   experimental: {
     instrumentationHook: true,
-    serverComponentsExternalPackages: ['better-sqlite3', 'imapflow'],
+    serverComponentsExternalPackages: ['pg', 'imapflow'],
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals.push({ 'better-sqlite3': 'commonjs better-sqlite3' });
+      config.externals.push({
+        pg: 'commonjs pg',
+        'pg-native': 'commonjs pg-native',
+      });
     }
     return config;
   },
