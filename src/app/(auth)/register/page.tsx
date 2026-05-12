@@ -69,7 +69,7 @@ export default function RegisterPage() {
         console.error('[REGISTER] Unexpected:', result);
       } else {
         console.log('[REGISTER] Success, navigating to dashboard');
-        window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/inbox`;
+        window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/welcome`;
       }
     } catch(err) {
       console.error('[REGISTER] Exception:', err);

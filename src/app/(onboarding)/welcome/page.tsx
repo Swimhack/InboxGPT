@@ -1,12 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Mail, Sparkles, FolderOpen, Zap, ArrowRight } from 'lucide-react';
+import { Mail, Sparkles, FolderOpen, Zap, ArrowRight, Loader2 } from 'lucide-react';
 
 export default function WelcomePage() {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
 
   const features = [
     {
@@ -30,6 +32,18 @@ export default function WelcomePage() {
       description: 'AI suggests responses',
     },
   ];
+
+  const handleGetStarted = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/onboarding/create-workspace', { method: 'POST' });
+      if (res.ok) {
+        router.push('/connect-channels');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -66,10 +80,20 @@ export default function WelcomePage() {
           <Button
             size="lg"
             className="w-full"
-            onClick={() => router.push('/inbox')}
+            onClick={handleGetStarted}
+            disabled={isLoading}
           >
-            Get Started
-            <ArrowRight className="ml-2 h-4 w-4" />
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Setting up...
+              </>
+            ) : (
+              <>
+                Get Started
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </>
+            )}
           </Button>
           <p className="text-xs text-center text-muted-foreground">
             Takes less than 2 minutes to set up

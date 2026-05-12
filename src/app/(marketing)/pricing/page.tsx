@@ -48,7 +48,7 @@ export default function PricingPage() {
 
   const handleUpgrade = async (planId: PlanId) => {
     if (planId === 'free') {
-      router.push('/register');
+      window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/register`;
       return;
     }
     setLoading(planId);
@@ -63,10 +63,10 @@ export default function PricingPage() {
         window.location.href = data.url;
       } else {
         // Not logged in or Stripe not configured — redirect to register
-        router.push('/register');
+        window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/register`;
       }
     } catch {
-      router.push('/register');
+      window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/register`;
     } finally {
       setLoading(null);
     }

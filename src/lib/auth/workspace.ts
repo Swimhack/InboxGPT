@@ -67,7 +67,7 @@ export async function requireWorkspace(): Promise<WorkspaceContext> {
     .orderBy(workspaceMembers.createdAt)
     .limit(1);
 
-  if (!fallback[0]) redirect('/onboarding/welcome');
+  if (!fallback[0]) redirect('/welcome');
 
   return {
     userId,
