@@ -108,9 +108,12 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.name = user.name;
       }
-      if (account?.provider === 'google' && token.email) {
+      // Always resolve user ID from DB by email — the JWT may carry a
+      // stale ID from before a database migration (e.g. SQLite → Postgres).
+      if (token.email) {
         const dbUser = await db.query.users.findFirst({
-          where: eq(schema.users.email, token.email),
+          where: eq(schema.users.email, token.email as string),
+          columns: { id: true },
         });
         if (dbUser) {
           token.id = dbUser.id;
