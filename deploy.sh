@@ -22,6 +22,8 @@ npm install --production=false >> "$LOG_FILE" 2>&1
 npm run build >> "$LOG_FILE" 2>&1
 
 # Restart app
-pm2 restart inboxgpt >> "$LOG_FILE" 2>&1
+pm2 delete inboxgpt >> "$LOG_FILE" 2>&1 || true
+pm2 start ecosystem.config.js >> "$LOG_FILE" 2>&1
+pm2 save >> "$LOG_FILE" 2>&1
 
 echo "=== Deploy finished at $(date) ===" >> "$LOG_FILE"
