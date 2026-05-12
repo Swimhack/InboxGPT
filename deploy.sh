@@ -18,7 +18,8 @@ git reset --hard origin/main
 # Install deps
 npm install --production=false >> "$LOG_FILE" 2>&1
 
-# Build
+# Clean stale build cache and rebuild
+rm -rf .next >> "$LOG_FILE" 2>&1
 npm run build >> "$LOG_FILE" 2>&1
 
 # Restart app
