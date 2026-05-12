@@ -66,7 +66,7 @@ export default function WelcomePage() {
           <Button
             size="lg"
             className="w-full"
-            onClick={() => router.push('/connect-channels')}
+            onClick={() => router.push('/inbox')}
           >
             Get Started
             <ArrowRight className="ml-2 h-4 w-4" />
