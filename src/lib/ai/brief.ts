@@ -145,9 +145,25 @@ export async function generateBriefForUser(
   }
 
   const prompt = buildBriefPrompt(user.name || '', accountEmails, emailData, timezone);
-  const aiClient = new AIClient(aiConfig);
 
-  return aiClient.generateBrief(prompt);
+  // Try user's stored key first, fall back to system provider (e.g. OpenRouter)
+  if (aiConfig) {
+    try {
+      const userClient = new AIClient(aiConfig);
+      return await userClient.generateBrief(prompt);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Billing, auth, or rate limit errors → fall back to system provider
+      if (/credit balance|too low|rate limit|unauthorized|forbidden|quota/i.test(msg)) {
+        console.warn('[Brief] User AI key failed, falling back to system provider:', msg.slice(0, 100));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const systemClient = new AIClient();
+  return systemClient.generateBrief(prompt);
 }
 
 function emptyBrief(name: string): BriefResult {

@@ -165,13 +165,13 @@ class OpenRouterClient {
   private model: string;
 
   constructor(model?: string, apiKey?: string) {
-    const key = apiKey || process.env.OPENROUTER_API_KEY;
+    const key = apiKey || process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
     if (!key) {
-      throw new Error('OpenRouter API key not found');
+      throw new Error('OpenRouter API key not found. Set OPENROUTER_API_KEY or AI_API_KEY.');
     }
     this.client = new OpenAI({
       apiKey: key,
-      baseURL: 'https://openrouter.ai/api/v1',
+      baseURL: process.env.AI_BASE_URL || 'https://openrouter.ai/api/v1',
     });
     this.model = model || 'openrouter/anthropic/claude-sonnet-4';
   }
