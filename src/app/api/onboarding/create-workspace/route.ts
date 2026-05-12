@@ -5,11 +5,35 @@ import { eq } from 'drizzle-orm';
 
 export async function POST() {
   const session = await getSession();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const userId = session.user.id;
+  const email = session.user.email;
+
+  // Resolve the real DB user by email — JWT user ID may be stale after
+  // database migration (e.g. SQLite → Supabase Postgres).
+  let dbUser = await db.query.users.findFirst({
+    where: eq(schema.users.email, email),
+    columns: { id: true },
+  });
+
+  if (!dbUser) {
+    // User exists in JWT but not in DB — create the DB record
+    const id = crypto.randomUUID();
+    const [created] = await db
+      .insert(schema.users)
+      .values({
+        id,
+        email,
+        name: session.user.name || email.split('@')[0],
+        passwordHash: '',
+      })
+      .returning({ id: schema.users.id });
+    dbUser = created;
+  }
+
+  const userId = dbUser.id;
 
   // Check if user already has a workspace
   const existing = await db
@@ -22,8 +46,7 @@ export async function POST() {
     return NextResponse.json({ workspaceId: existing[0].workspaceId });
   }
 
-  // Create workspace with slug derived from user email
-  const email = session.user.email || 'user';
+  // Create workspace
   const slug = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 30)
     + '-' + Date.now().toString(36);
   const name = session.user.name

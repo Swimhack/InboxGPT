@@ -9,6 +9,7 @@ import { Mail, Sparkles, FolderOpen, Zap, ArrowRight, Loader2 } from 'lucide-rea
 export default function WelcomePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const features = [
     {
@@ -35,11 +36,19 @@ export default function WelcomePage() {
 
   const handleGetStarted = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/onboarding/create-workspace', { method: 'POST' });
       if (res.ok) {
         router.push('/connect-channels');
+      } else if (res.status === 401) {
+        router.push('/login');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Something went wrong. Please try again.');
       }
+    } catch {
+      setError('Network error. Please check your connection.');
     } finally {
       setIsLoading(false);
     }
@@ -95,6 +104,9 @@ export default function WelcomePage() {
               </>
             )}
           </Button>
+          {error && (
+            <p className="text-xs text-center text-destructive">{error}</p>
+          )}
           <p className="text-xs text-center text-muted-foreground">
             Takes less than 2 minutes to set up
           </p>
