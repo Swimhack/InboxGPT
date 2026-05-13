@@ -162,8 +162,16 @@ export async function generateBriefForUser(
     }
   }
 
+  console.log('[Brief] Using system provider:', process.env.AI_PROVIDER || 'anthropic (default)', 'model:', process.env.AI_MODEL || 'default');
   const systemClient = new AIClient();
-  return systemClient.generateBrief(prompt);
+  try {
+    const result = await systemClient.generateBrief(prompt);
+    console.log('[Brief] System provider succeeded');
+    return result;
+  } catch (err) {
+    console.error('[Brief] System provider failed:', err instanceof Error ? err.message : err);
+    throw err;
+  }
 }
 
 function emptyBrief(name: string): BriefResult {
