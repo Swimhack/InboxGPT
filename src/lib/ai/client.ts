@@ -201,13 +201,14 @@ Respond in JSON format:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
-    if (!content) {
+    const rawContent = response.choices[0].message.content;
+    if (!rawContent) {
       throw new Error('Empty response');
     }
 
     try {
-      const parsed = JSON.parse(content);
+      const jsonStr = rawContent.match(/\{[\s\S]*\}/)?.[0] || rawContent;
+      const parsed = JSON.parse(jsonStr);
       return {
         summary: parsed.summary,
         category: parsed.category,
@@ -247,13 +248,14 @@ Respond in JSON format:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
-    if (!content) {
+    const rawContent = response.choices[0].message.content;
+    if (!rawContent) {
       throw new Error('Empty response');
     }
 
     try {
-      const parsed = JSON.parse(content);
+      const jsonStr = rawContent.match(/\{[\s\S]*\}/)?.[0] || rawContent;
+      const parsed = JSON.parse(jsonStr);
       return { replies: parsed.replies };
     } catch {
       return { replies: [] };
@@ -268,13 +270,15 @@ Respond in JSON format:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
-    if (!content) {
+    const raw = response.choices[0].message.content;
+    if (!raw) {
       throw new Error('Empty response');
     }
 
     try {
-      const parsed = JSON.parse(content);
+      // Strip markdown code fences if present (some providers wrap JSON in ```json ... ```)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
       return {
         greeting: parsed.greeting || '',
         summary: parsed.summary || '',
@@ -330,13 +334,14 @@ Respond in JSON format:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
-    if (!content) {
+    const rawContent = response.choices[0].message.content;
+    if (!rawContent) {
       throw new Error('Empty response');
     }
 
     try {
-      const parsed = JSON.parse(content);
+      const jsonStr = rawContent.match(/\{[\s\S]*\}/)?.[0] || rawContent;
+      const parsed = JSON.parse(jsonStr);
       return {
         summary: parsed.summary,
         category: parsed.category,
@@ -376,13 +381,14 @@ Respond in JSON format:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
-    if (!content) {
+    const rawContent = response.choices[0].message.content;
+    if (!rawContent) {
       throw new Error('Empty response');
     }
 
     try {
-      const parsed = JSON.parse(content);
+      const jsonStr = rawContent.match(/\{[\s\S]*\}/)?.[0] || rawContent;
+      const parsed = JSON.parse(jsonStr);
       return { replies: parsed.replies };
     } catch {
       return { replies: [] };
@@ -397,13 +403,15 @@ Respond in JSON format:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
-    if (!content) {
+    const raw = response.choices[0].message.content;
+    if (!raw) {
       throw new Error('Empty response');
     }
 
     try {
-      const parsed = JSON.parse(content);
+      // Strip markdown code fences if present (some providers wrap JSON in ```json ... ```)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
       return {
         greeting: parsed.greeting || '',
         summary: parsed.summary || '',
