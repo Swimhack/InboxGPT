@@ -1,7 +1,7 @@
 'use client';
 
 import { Sidebar, SidebarProvider } from '@/components/dashboard/sidebar';
-import { Header } from '@/components/dashboard/header';
+import { EcosystemHeader } from '@/components/dashboard/ecosystem-header';
 import { StatusBar } from '@/components/dashboard/status-bar';
 
 interface DashboardShellProps {
@@ -15,7 +15,7 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
       <div className="flex h-screen bg-background">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-          <Header user={user} />
+          <EcosystemHeader user={user} />
           <StatusBar />
           <main className="flex-1 overflow-auto">{children}</main>
         </div>
