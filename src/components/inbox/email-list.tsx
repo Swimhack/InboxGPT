@@ -339,12 +339,6 @@ export function EmailList({ folder, accountId, category, onSelectEmail, selected
                   </p>
 
                   <div className="flex items-center gap-1 mt-1">
-                    {!email.aiProcessedAt && (
-                      <Badge variant="outline" className="text-xs py-0 h-5 text-purple-600 border-purple-200 bg-purple-50 dark:bg-purple-950/30">
-                        <Sparkles className="h-3 w-3 mr-1 animate-pulse" />
-                        Analyzing
-                      </Badge>
-                    )}
                     {email.aiCategory && (
                       <Badge variant="outline" className="text-xs py-0 h-5">
                         {email.aiCategory}
