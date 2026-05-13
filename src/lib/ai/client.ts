@@ -66,7 +66,7 @@ Respond in JSON format:
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -111,7 +111,7 @@ Respond in JSON format:
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -131,7 +131,7 @@ Respond in JSON format:
   async generateBrief(prompt: string): Promise<BriefResult> {
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 1500,
+      max_tokens: 700,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -196,7 +196,7 @@ Respond in JSON format:
 
     const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
@@ -242,7 +242,7 @@ Respond in JSON format:
 
     const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
@@ -263,7 +263,7 @@ Respond in JSON format:
   async generateBrief(prompt: string): Promise<BriefResult> {
     const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 1500,
+      max_tokens: 700,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
@@ -325,7 +325,7 @@ Respond in JSON format:
 
     const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
@@ -371,7 +371,7 @@ Respond in JSON format:
 
     const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
@@ -392,7 +392,7 @@ Respond in JSON format:
   async generateBrief(prompt: string): Promise<BriefResult> {
     const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 1500,
+      max_tokens: 700,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
