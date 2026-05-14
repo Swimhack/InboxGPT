@@ -116,28 +116,28 @@ Respond in JSON format only:
 }`;
   }
 
-  const emailList = emails
+  // Limit to 30 emails in prompt to control token cost
+  const promptEmails = emails.slice(0, 30);
+  const emailList = promptEmails
     .map(
       (e, i) =>
-        `${i + 1}. [${e.priority.toUpperCase()}] "${e.subject}" from ${e.from} (${e.category}, ${e.account}) — ${e.snippet?.slice(0, 120) || 'No preview'} — ${e.receivedAt}`
+        `${i + 1}. [${e.priority.toUpperCase()}] "${e.subject}" from ${e.from} (${e.category}) — ${e.snippet?.slice(0, 80) || 'No preview'}`
     )
     .join('\n');
 
   return `You are an executive AI assistant creating a daily brief for ${userName || 'a busy entrepreneur'}.
-Your user is a busy entrepreneur who needs to quickly triage their inbox and focus on what matters.
 Connected accounts: ${accountEmails.join(', ')}
-Current time: ${now.toISOString()} (${timeOfDay})
-Unread emails (${emails.length}):
+Time: ${now.toISOString()} (${timeOfDay})
+Unread: ${emails.length} total${emails.length > 30 ? ` (showing top 30)` : ''}:
 
 ${emailList}
 
-Create a concise, actionable brief that helps them decide what to do first. Think like a chief of staff:
-- Lead with what's urgent or time-sensitive
-- Group by theme: deals, clients, operations, team, finance, etc.
-- Extract concrete action items with deadlines when mentioned
-- Flag anything that needs a reply today
-- Note patterns (e.g. "3 follow-ups pending from last week")
-- Keep summaries tight — one sentence max per email
+Think like a chief of staff. Rules:
+- Lead with urgent/time-sensitive items
+- Group by theme (deals, clients, operations, team, finance, etc.)
+- Extract action items with deadlines
+- Flag items needing reply today
+- One sentence max per email summary
 
 Respond in JSON format only:
 {

@@ -1,11 +1,47 @@
 import { db, schema } from '../db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { canProcessWithAI } from './limits';
 import { AIClient, type AIClientConfig, type BriefResult } from './client';
 import { buildBriefPrompt, type BriefEmailData } from './prompts';
 import { decrypt } from '../crypto/encryption';
 
 export type { BriefResult };
+
+// ────────────────────────────────────────────────────────────────────────────
+// In-memory brief cache (single-instance PM2 deployment)
+// ────────────────────────────────────────────────────────────────────────────
+interface CachedBrief {
+  brief: BriefResult;
+  unreadCount: number; // invalidate when inbox changes
+  cachedAt: number;
+}
+
+const CACHE_TTL_MS = 30 * 60_000; // 30 minutes
+const briefCache = new Map<string, CachedBrief>();
+
+function getCachedBrief(workspaceId: string, currentUnreadCount: number): BriefResult | null {
+  const entry = briefCache.get(workspaceId);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
+    briefCache.delete(workspaceId);
+    return null;
+  }
+  // Invalidate if unread count changed (new mail arrived or user read something)
+  if (entry.unreadCount !== currentUnreadCount) {
+    briefCache.delete(workspaceId);
+    return null;
+  }
+  return entry.brief;
+}
+
+function setCachedBrief(workspaceId: string, brief: BriefResult, unreadCount: number): void {
+  briefCache.set(workspaceId, { brief, unreadCount, cachedAt: Date.now() });
+  // Prevent unbounded growth — evict oldest if over 100 entries
+  if (briefCache.size > 100) {
+    const oldest = briefCache.keys().next().value;
+    if (oldest) briefCache.delete(oldest);
+  }
+}
 
 /**
  * Extract a human-readable display name + email address from the
@@ -98,6 +134,26 @@ export async function generateBriefForUser(
     accounts.map((a) => [a.id, a.displayName || a.externalAccountId || 'unknown'])
   );
 
+  // Quick unread count for cache validation (cheap query)
+  const [{ count: unreadCount }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.messages)
+    .where(
+      and(
+        eq(schema.messages.workspaceId, workspaceId),
+        eq(schema.messages.direction, 'inbound'),
+        eq(schema.messages.isRead, false),
+        eq(schema.messages.isDeleted, false)
+      )
+    );
+
+  // Return cached brief if inbox hasn't changed
+  const cached = getCachedBrief(workspaceId, unreadCount);
+  if (cached) {
+    console.log('[Brief] Returning cached brief for workspace', workspaceId);
+    return cached;
+  }
+
   const recentEmails = await db
     .select({
       subject: schema.messages.subject,
@@ -147,10 +203,12 @@ export async function generateBriefForUser(
   const prompt = buildBriefPrompt(user.name || '', accountEmails, emailData, timezone);
 
   // Try user's stored key first, fall back to system provider (e.g. OpenRouter)
+  let result: BriefResult | null = null;
+
   if (aiConfig) {
     try {
       const userClient = new AIClient(aiConfig);
-      return await userClient.generateBrief(prompt);
+      result = await userClient.generateBrief(prompt);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       // Billing, auth, or rate limit errors → fall back to system provider
@@ -162,16 +220,21 @@ export async function generateBriefForUser(
     }
   }
 
-  console.log('[Brief] Using system provider:', process.env.AI_PROVIDER || 'anthropic (default)', 'model:', process.env.AI_MODEL || 'default');
-  const systemClient = new AIClient();
-  try {
-    const result = await systemClient.generateBrief(prompt);
-    console.log('[Brief] System provider succeeded');
-    return result;
-  } catch (err) {
-    console.error('[Brief] System provider failed:', err instanceof Error ? err.message : err);
-    throw err;
+  if (!result) {
+    console.log('[Brief] Using system provider:', process.env.AI_PROVIDER || 'anthropic (default)', 'model:', process.env.AI_MODEL || 'default');
+    const systemClient = new AIClient();
+    try {
+      result = await systemClient.generateBrief(prompt);
+      console.log('[Brief] System provider succeeded');
+    } catch (err) {
+      console.error('[Brief] System provider failed:', err instanceof Error ? err.message : err);
+      throw err;
+    }
   }
+
+  // Cache the generated brief
+  setCachedBrief(workspaceId, result, unreadCount);
+  return result;
 }
 
 function emptyBrief(name: string): BriefResult {
