@@ -10,41 +10,93 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  AlertCircle,
-  Info,
-  ArrowRight,
-  Mail,
-  Clock,
+  RefreshCw,
+  Circle,
+  CircleAlert,
 } from 'lucide-react';
-import type { BriefContent } from '@/lib/ai/brief-generator';
+import type { BriefResult } from '@/lib/ai/client';
+import { apiUrl } from '@/lib/utils';
 
 interface AIBriefProps {
   onSelectEmail?: (emailId: string) => void;
 }
 
+const DISMISS_KEY = 'inboxgpt-dashboard-brief-dismissed';
+
+const urgencyColors = {
+  high: 'bg-red-500',
+  medium: 'bg-amber-500',
+  low: 'bg-blue-400',
+};
+
+const priorityVariant = {
+  urgent: 'destructive' as const,
+  high: 'default' as const,
+  normal: 'secondary' as const,
+  low: 'outline' as const,
+};
+
 export function AIBrief({ onSelectEmail }: AIBriefProps) {
-  const [brief, setBrief] = useState<BriefContent | null>(null);
+  const [brief, setBrief] = useState<BriefResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [dismissed, setDismissed] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
-  useEffect(() => {
-    const fetchBrief = async () => {
-      try {
-        const res = await fetch('/api/brief');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.brief) setBrief(data.brief);
-      } catch {
-        // Non-critical
-      } finally {
-        setLoading(false);
+  const fetchBrief = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/brief'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed (${res.status})`);
       }
-    };
+      const data = await res.json();
+      if (data.brief) setBrief(data.brief);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load brief');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const wasDismissed = sessionStorage.getItem(DISMISS_KEY);
+    if (wasDismissed) {
+      setDismissed(true);
+      setLoading(false);
+      return;
+    }
     fetchBrief();
   }, []);
 
-  if (dismissed || (!loading && !brief)) return null;
+  const handleDismiss = () => {
+    sessionStorage.setItem(DISMISS_KEY, '1');
+    setDismissed(true);
+  };
+
+  const handleReshow = () => {
+    sessionStorage.removeItem(DISMISS_KEY);
+    setDismissed(false);
+    fetchBrief();
+  };
+
+  if (dismissed) {
+    return (
+      <button
+        onClick={handleReshow}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Sparkles className="w-3 h-3" />
+        Show AI Brief
+      </button>
+    );
+  }
 
   if (loading) {
     return (
@@ -56,6 +108,29 @@ export function AIBrief({ onSelectEmail }: AIBriefProps) {
           </div>
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-3/4" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="mx-3 mt-3 border-red-200 bg-red-50/50 dark:bg-red-950/20">
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-red-600">
+              <CircleAlert className="w-4 h-4" />
+              {error}
+            </div>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={fetchBrief} className="h-7 px-2">
+                <RefreshCw className="w-3 h-3" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleDismiss} className="h-7 px-2">
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
@@ -76,24 +151,18 @@ export function AIBrief({ onSelectEmail }: AIBriefProps) {
             <span className="text-sm font-medium">{brief.greeting}</span>
           </div>
           <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={fetchBrief}>
+              <RefreshCw className="h-3 w-3" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6"
               onClick={() => setCollapsed((c) => !c)}
             >
-              {collapsed ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronUp className="h-3 w-3" />
-              )}
+              {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => setDismissed(true)}
-            >
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleDismiss}>
               <X className="h-3 w-3" />
             </Button>
           </div>
@@ -102,28 +171,34 @@ export function AIBrief({ onSelectEmail }: AIBriefProps) {
         {!collapsed && (
           <div className="px-4 pb-4 space-y-3">
             {/* Summary */}
-            <p className="text-sm text-muted-foreground">{brief.summary}</p>
+            {brief.summary && (
+              <p className="text-sm text-muted-foreground">{brief.summary}</p>
+            )}
 
-            {/* Stats row */}
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              {brief.stats.unreadCount > 0 && (
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3 w-3" />
-                  {brief.stats.unreadCount} unread
-                </span>
-              )}
-              {brief.stats.totalToday > 0 && (
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {brief.stats.totalToday} today
-                </span>
-              )}
-              {brief.stats.topSenders.length > 0 && (
-                <span className="truncate">
-                  Top: {brief.stats.topSenders.slice(0, 2).join(', ')}
-                </span>
-              )}
-            </div>
+            {/* Sections */}
+            {brief.sections.map((section, i) => (
+              <div key={i}>
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                  {section.title}
+                </h4>
+                <div className="space-y-1">
+                  {section.items.map((item, j) => (
+                    <div key={j} className="flex items-start gap-2 text-xs">
+                      <Badge
+                        variant={priorityVariant[item.priority as keyof typeof priorityVariant] || 'secondary'}
+                        className="text-[10px] px-1 py-0 shrink-0 mt-0.5"
+                      >
+                        {item.priority}
+                      </Badge>
+                      <div className="min-w-0">
+                        <span className="font-medium">{item.from}</span>
+                        <span className="text-muted-foreground"> — {item.summary}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
 
             {/* Action Items */}
             {brief.actionItems.length > 0 && (
@@ -132,42 +207,21 @@ export function AIBrief({ onSelectEmail }: AIBriefProps) {
                   Action items
                 </h4>
                 {brief.actionItems.map((item, i) => (
-                  <button
+                  <div
                     key={i}
-                    onClick={() => item.messageId && onSelectEmail?.(item.messageId)}
-                    className="flex items-center gap-2 w-full text-left text-sm p-2 rounded-md hover:bg-muted/50 transition-colors group"
+                    className="flex items-center gap-2 w-full text-left text-sm p-2 rounded-md hover:bg-muted/50 transition-colors"
                   >
-                    <div
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        item.priority === 'urgent'
-                          ? 'bg-red-500'
-                          : item.priority === 'high'
-                            ? 'bg-orange-500'
-                            : 'bg-blue-400'
+                    <Circle
+                      className={`w-2 h-2 shrink-0 fill-current ${
+                        urgencyColors[item.urgency] || 'bg-blue-400'
+                      } ${
+                        item.urgency === 'high' ? 'text-red-500' :
+                        item.urgency === 'medium' ? 'text-amber-500' : 'text-blue-500'
                       }`}
                     />
                     <span className="flex-1 truncate">{item.text}</span>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Highlights */}
-            {brief.highlights.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {brief.highlights.map((h, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-muted"
-                  >
-                    {h.type === 'alert' ? (
-                      <AlertCircle className="h-3 w-3 text-amber-500" />
-                    ) : (
-                      <Info className="h-3 w-3 text-blue-500" />
-                    )}
-                    {h.text}
-                  </span>
+                    <span className="text-xs text-muted-foreground">({item.source})</span>
+                  </div>
                 ))}
               </div>
             )}

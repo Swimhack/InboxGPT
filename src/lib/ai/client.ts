@@ -216,7 +216,7 @@ Respond in JSON format:
       };
     } catch {
       return {
-        summary: content.slice(0, 500),
+        summary: rawContent.slice(0, 500),
         category: 'primary',
         priority: 'normal',
       };
@@ -349,7 +349,7 @@ Respond in JSON format:
       };
     } catch {
       return {
-        summary: content.slice(0, 500),
+        summary: rawContent.slice(0, 500),
         category: 'primary',
         priority: 'normal',
       };

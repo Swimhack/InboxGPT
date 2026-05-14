@@ -1,4 +1,4 @@
-import { type NextAuthOptions } from 'next-auth';
+import { type NextAuthOptions, type User } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import { db, schema } from '@/lib/db';
@@ -18,9 +18,9 @@ export const authOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials): Promise<User | null> {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password required');
+          return null;
         }
 
         try {
@@ -28,24 +28,24 @@ export const authOptions: NextAuthOptions = {
             where: eq(schema.users.email, credentials.email),
           });
 
-          if (!user) {
-            throw new Error('Invalid credentials');
+          if (!user || !user.passwordHash) {
+            return null;
           }
 
           const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
 
           if (!isValid) {
-            throw new Error('Invalid credentials');
+            return null;
           }
 
           return {
             id: user.id,
             email: user.email,
-            name: user.name,
+            name: user.name || user.email.split('@')[0],
           };
         } catch (error) {
           console.error('Auth error:', error);
-          throw new Error('Authentication failed. Please ensure the database is initialized.');
+          return null;
         }
       },
     }),
@@ -67,14 +67,14 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!existing) {
-          // Check if this Google email is used as an email_account under another user
+          // Check if this Google email is used as a channel_account under another user
           // If so, adopt that user's identity to preserve their data
-          const linkedAccount = await db.query.emailAccounts.findFirst({
-            where: eq(schema.emailAccounts.email, user.email),
+          const linkedAccount = await db.query.channelAccounts.findFirst({
+            where: eq(schema.channelAccounts.externalAccountId, user.email),
           });
 
-          if (linkedAccount) {
-            // Adopt the existing user that owns this email account
+          if (linkedAccount && linkedAccount.userId) {
+            // Adopt the existing user that owns this channel account
             existing = await db.query.users.findFirst({
               where: eq(schema.users.id, linkedAccount.userId),
             });

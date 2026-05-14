@@ -1,11 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { generateBriefForUser } from '@/lib/ai/brief';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+const BRIEF_RATE_LIMIT = { limit: 5, windowMs: 60_000 }; // 5 per minute
 
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Per-user rate limiting
+  const rl = checkRateLimit(`brief:${session.user.id}`, BRIEF_RATE_LIMIT);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Too many requests. Try again in ${rl.retryAfter}s.` },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
   }
 
   try {
@@ -54,9 +66,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Never leak internal driver errors (e.g. "SQLite3 can only bind…" or
-    // Postgres syntax exceptions) into the UI. Users see "Brief unavailable"
-    // and can dismiss / retry.
+    // Never leak internal driver errors into the UI.
     const safeMessage = /sqlite|pg|postgres|bind|no such (table|column)/i.test(message)
       ? 'Brief is temporarily unavailable. Please try again in a minute.'
       : message;

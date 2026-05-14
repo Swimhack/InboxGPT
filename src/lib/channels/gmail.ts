@@ -171,7 +171,7 @@ export const gmailAdapter: ChannelAdapter = {
    * Pull new messages from Gmail via processEmailSync → syncGmailViaRest.
    */
   async sync(account: ChannelAccount) {
-    const result = await processEmailSync({ accountId: account.id, type: 'incremental' });
+    const result = await processEmailSync({ accountId: account.id, userId: account.userId ?? '', type: 'incremental' });
     return { inserted: result.newEmailCount };
   },
 };
