@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
-import LandingPage from './(marketing)/page';
+import LandingPage from '@/components/marketing/landing-page';
 
 export const dynamic = 'force-dynamic';
 
