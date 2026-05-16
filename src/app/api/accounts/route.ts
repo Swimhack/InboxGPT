@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { encryptJSON } from '@/lib/crypto/encryption';
 import type { ImapCredentials } from '@/lib/crypto/encryption';
 import { z } from 'zod';
+import { canAddChannel } from '@/lib/stripe/plans';
 
 const addImapAccountSchema = z.object({
   email: z.string().email(),
@@ -52,6 +53,24 @@ export async function POST(request: NextRequest) {
   const workspace = await getWorkspace();
   if (!workspace) {
     return NextResponse.json({ error: 'No workspace' }, { status: 400 });
+  }
+
+  // Enforce free-tier account limit before parsing body
+  const existingAccounts = await db
+    .select({ id: schema.channelAccounts.id })
+    .from(schema.channelAccounts)
+    .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId));
+
+  const [ws] = await db
+    .select({ plan: schema.workspaces.plan })
+    .from(schema.workspaces)
+    .where(eq(schema.workspaces.id, workspace.workspaceId));
+
+  if (!canAddChannel(ws?.plan || 'free', existingAccounts.length)) {
+    return NextResponse.json(
+      { error: 'Account limit reached. Upgrade to Pro for unlimited accounts.', upgrade: true },
+      { status: 403 },
+    );
   }
 
   try {

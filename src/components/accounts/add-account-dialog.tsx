@@ -10,17 +10,24 @@ interface AddAccountDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAccountAdded?: () => void;
+  onUpgradeRequired?: () => void;
 }
 
 export function AddAccountDialog({
   open,
   onOpenChange,
   onAccountAdded,
+  onUpgradeRequired,
 }: AddAccountDialogProps) {
   const handleComplete = () => {
     onOpenChange(false);
     if (onAccountAdded) onAccountAdded();
     else window.location.reload();
+  };
+
+  const handleUpgradeRequired = () => {
+    onOpenChange(false);
+    if (onUpgradeRequired) onUpgradeRequired();
   };
 
   return (
@@ -29,6 +36,7 @@ export function AddAccountDialog({
         <SetupWizard
           onComplete={handleComplete}
           onCancel={() => onOpenChange(false)}
+          onUpgradeRequired={handleUpgradeRequired}
           compact
         />
       </DialogContent>

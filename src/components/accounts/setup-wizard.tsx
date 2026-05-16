@@ -87,10 +87,11 @@ function getAIGuidance(provider: PickedProvider | null, step: WizardStep, testRe
 interface SetupWizardProps {
   onComplete: () => void;
   onCancel?: () => void;
+  onUpgradeRequired?: () => void;
   compact?: boolean; // Show in dialog mode vs full-screen
 }
 
-export function SetupWizard({ onComplete, onCancel, compact = false }: SetupWizardProps) {
+export function SetupWizard({ onComplete, onCancel, onUpgradeRequired, compact = false }: SetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('pick');
   const [provider, setProvider] = useState<PickedProvider | null>(null);
   const [email, setEmail] = useState('');
@@ -203,6 +204,10 @@ export function SetupWizard({ onComplete, onCancel, compact = false }: SetupWiza
         setTimeout(onComplete, 1800);
       } else {
         const data = await res.json();
+        if (res.status === 403 && data.upgrade && onUpgradeRequired) {
+          onUpgradeRequired();
+          return;
+        }
         setSaveError(data.error || 'Failed to save account.');
         setStep('configure');
       }

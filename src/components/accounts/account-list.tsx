@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AddAccountDialog } from './add-account-dialog';
+import { UpgradeModal } from '@/components/upgrade/upgrade-modal';
 import { Mail, RefreshCw, Trash2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -32,6 +33,7 @@ export function AccountList() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [syncingAccounts, setSyncingAccounts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -283,6 +285,13 @@ export function AccountList() {
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
         onAccountAdded={fetchAccounts}
+        onUpgradeRequired={() => setIsUpgradeModalOpen(true)}
+      />
+
+      <UpgradeModal
+        open={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        feature="add unlimited email accounts"
       />
     </div>
   );
