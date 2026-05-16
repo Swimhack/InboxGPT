@@ -1,30 +1,28 @@
 #!/bin/bash
-# Auto-deploy script for InboxGPT
-# Triggered by GitHub webhook on push to main
-
 set -e
 
-APP_DIR="/home/james/InboxGPT"
-LOG_FILE="/home/james/InboxGPT/deploy.log"
+echo "=== InboxGPT Deploy ==="
 
-echo "=== Deploy started at $(date) ===" >> "$LOG_FILE"
+# Build locally
+echo "[1/4] Building..."
+npm run build
 
-cd "$APP_DIR"
+# SCP standalone build to server
+echo "[2/4] Uploading standalone build..."
+SSH_KEY="$HOME/.ssh/fleet_admin_key"
+SERVER="james@137.184.136.55"
+REMOTE_DIR="/var/www/sites/inboxgpt.stricklandai.com/app"
 
-# Pull latest
-git fetch origin main
-git reset --hard origin/main
+scp -i "$SSH_KEY" -r .next/standalone/* "$SERVER:$REMOTE_DIR/"
+scp -i "$SSH_KEY" -r .next/static "$SERVER:$REMOTE_DIR/.next/"
+scp -i "$SSH_KEY" -r public "$SERVER:$REMOTE_DIR/"
 
-# Install deps
-npm install --production=false >> "$LOG_FILE" 2>&1
+# Copy ecosystem config
+echo "[3/4] Uploading PM2 config..."
+scp -i "$SSH_KEY" ecosystem.config.js "$SERVER:$REMOTE_DIR/"
 
-# Clean stale build cache and rebuild
-rm -rf .next >> "$LOG_FILE" 2>&1
-npm run build >> "$LOG_FILE" 2>&1
+# Restart PM2
+echo "[4/4] Restarting PM2..."
+ssh -i "$SSH_KEY" "$SERVER" "cd $REMOTE_DIR && pm2 restart ecosystem.config.js --update-env || pm2 start ecosystem.config.js"
 
-# Restart app
-pm2 delete inboxgpt >> "$LOG_FILE" 2>&1 || true
-pm2 start ecosystem.config.js >> "$LOG_FILE" 2>&1
-pm2 save >> "$LOG_FILE" 2>&1
-
-echo "=== Deploy finished at $(date) ===" >> "$LOG_FILE"
+echo "=== Deploy complete: https://inboxgpt.stricklandai.com ==="
