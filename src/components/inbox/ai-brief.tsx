@@ -42,11 +42,32 @@ const priorityVariant = {
   low: 'outline' as const,
 };
 
-export function AIBrief() {
+export function AIBrief({ plan }: { plan?: string }) {
   const [state, setState] = useState<BriefState>('loading');
   const [brief, setBrief] = useState<BriefData | null>(null);
   const [error, setError] = useState<string>('');
   const [collapsed, setCollapsed] = useState(false);
+
+  // Show locked teaser for free users
+  if (!plan || plan === 'free') {
+    return (
+      <div className="relative border rounded-lg p-4 mb-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 overflow-hidden">
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-purple-500" />
+            <span className="font-medium text-sm">AI Daily Brief</span>
+            <Badge variant="secondary" className="text-xs">Pro</Badge>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => window.location.href = '/pricing'}>
+            Unlock with Pro
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Get a daily AI summary of your inbox — priorities, action items, and what needs attention.
+        </p>
+      </div>
+    );
+  }
 
   const fetchBrief = useCallback(async () => {
     setState('loading');
