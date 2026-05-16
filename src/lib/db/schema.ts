@@ -175,6 +175,10 @@ export const workspaces = pgTable('workspaces', {
   featureFlags: jsonb('feature_flags').$type<Record<string, boolean>>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  briefEnabled: boolean('brief_enabled').notNull().default(true),
+  briefHour: integer('brief_hour').notNull().default(7),
+  briefTimezone: text('brief_timezone').notNull().default('America/Chicago'),
+  lastBriefSentAt: timestamp('last_brief_sent_at', { withTimezone: true, mode: 'date' }),
 });
 
 export const workspaceMembers = pgTable(
