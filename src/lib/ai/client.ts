@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 
-export type AIProvider = 'anthropic' | 'openai' | 'openrouter';
+export type AIProvider = 'anthropic' | 'openai' | 'openrouter' | 'groq';
 
 export interface AIClientConfig {
   provider: AIProvider;
@@ -296,6 +296,143 @@ Respond in JSON format:
   }
 }
 
+class GroqClient {
+  private client: OpenAI;
+  private model: string;
+  private lightModel: string;
+
+  constructor(model?: string, apiKey?: string) {
+    const key = apiKey || process.env.GROQ_API_KEY;
+    if (!key) {
+      throw new Error('Groq API key not found. Set GROQ_API_KEY.');
+    }
+    this.client = new OpenAI({
+      apiKey: key,
+      baseURL: 'https://api.groq.com/openai/v1',
+    });
+    this.model = model || 'llama-3.3-70b-versatile';
+    this.lightModel = 'llama-3.1-8b-instant';
+  }
+
+  async summarize(subject: string, body: string): Promise<SummarizeResult> {
+    const prompt = `Analyze this email and provide:
+1. A concise summary (2-3 sentences)
+2. Category (one of: primary, social, promotions, updates, forums, spam)
+3. Priority (one of: urgent, high, normal, low)
+
+Email Subject: ${subject}
+
+Email Body:
+${body.slice(0, 4000)}
+
+Respond in JSON format:
+{
+  "summary": "...",
+  "category": "...",
+  "priority": "..."
+}`;
+
+    const response = await this.client.chat.completions.create({
+      model: this.lightModel,
+      max_tokens: 300,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    });
+
+    const rawContent = response.choices[0].message.content;
+    if (!rawContent) {
+      throw new Error('Empty response');
+    }
+
+    try {
+      const jsonStr = rawContent.match(/\{[\s\S]*\}/)?.[0] || rawContent;
+      const parsed = JSON.parse(jsonStr);
+      return {
+        summary: parsed.summary,
+        category: parsed.category,
+        priority: parsed.priority,
+      };
+    } catch {
+      return {
+        summary: rawContent.slice(0, 500),
+        category: 'primary',
+        priority: 'normal',
+      };
+    }
+  }
+
+  async generateReplies(subject: string, body: string, senderName: string): Promise<QuickReplyResult> {
+    const prompt = `Generate 3 quick reply suggestions for this email. Each reply should be professional, concise (1-2 sentences), and offer different tones/approaches.
+
+Email From: ${senderName}
+Subject: ${subject}
+
+Email Body:
+${body.slice(0, 2000)}
+
+Respond in JSON format:
+{
+  "replies": [
+    "reply 1...",
+    "reply 2...",
+    "reply 3..."
+  ]
+}`;
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      max_tokens: 300,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    });
+
+    const rawContent = response.choices[0].message.content;
+    if (!rawContent) {
+      throw new Error('Empty response');
+    }
+
+    try {
+      const jsonStr = rawContent.match(/\{[\s\S]*\}/)?.[0] || rawContent;
+      const parsed = JSON.parse(jsonStr);
+      return { replies: parsed.replies };
+    } catch {
+      return { replies: [] };
+    }
+  }
+
+  async generateBrief(prompt: string): Promise<BriefResult> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      max_tokens: 700,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = response.choices[0].message.content;
+    if (!raw) {
+      throw new Error('Empty response');
+    }
+
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+      return {
+        greeting: parsed.greeting || '',
+        summary: parsed.summary || '',
+        sections: parsed.sections || [],
+        actionItems: parsed.actionItems || [],
+      };
+    } catch {
+      return {
+        greeting: 'Here is your inbox brief.',
+        summary: '',
+        sections: [],
+        actionItems: [],
+      };
+    }
+  }
+}
+
 class OpenAIClient {
   private client: OpenAI;
   private model: string;
@@ -433,6 +570,7 @@ export class AIClient {
   private anthropic: AnthropicClient | null = null;
   private openai: OpenAIClient | null = null;
   private openrouter: OpenRouterClient | null = null;
+  private groq: GroqClient | null = null;
   private provider: AIProvider;
 
   constructor(config?: AIClientConfig) {
@@ -444,6 +582,8 @@ export class AIClient {
       this.anthropic = new AnthropicClient(model, apiKey);
     } else if (this.provider === 'openrouter') {
       this.openrouter = new OpenRouterClient(model, apiKey);
+    } else if (this.provider === 'groq') {
+      this.groq = new GroqClient(model, apiKey);
     } else {
       this.openai = new OpenAIClient(model, apiKey);
     }
@@ -452,6 +592,9 @@ export class AIClient {
   async summarize(subject: string, body: string): Promise<SummarizeResult> {
     if (this.anthropic) {
       return this.anthropic.summarize(subject, body);
+    }
+    if (this.groq) {
+      return this.groq.summarize(subject, body);
     }
     if (this.openrouter) {
       return this.openrouter.summarize(subject, body);
@@ -466,6 +609,9 @@ export class AIClient {
     if (this.anthropic) {
       return this.anthropic.generateReplies(subject, body, senderName);
     }
+    if (this.groq) {
+      return this.groq.generateReplies(subject, body, senderName);
+    }
     if (this.openrouter) {
       return this.openrouter.generateReplies(subject, body, senderName);
     }
@@ -478,6 +624,9 @@ export class AIClient {
   async generateBrief(prompt: string): Promise<BriefResult> {
     if (this.anthropic) {
       return this.anthropic.generateBrief(prompt);
+    }
+    if (this.groq) {
+      return this.groq.generateBrief(prompt);
     }
     if (this.openrouter) {
       return this.openrouter.generateBrief(prompt);
