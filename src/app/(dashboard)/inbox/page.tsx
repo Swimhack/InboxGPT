@@ -13,6 +13,7 @@ export default function InboxPage() {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasAccounts, setHasAccounts] = useState<boolean>(true); // default true so inbox always shows
+  const [plan, setPlan] = useState<string>('free');
 
   const checkAccounts = useCallback(async () => {
     try {
@@ -20,6 +21,7 @@ export default function InboxPage() {
       if (res.ok) {
         const data = await res.json();
         setHasAccounts((data.accounts?.length ?? 0) > 0);
+        if (data.plan) setPlan(data.plan);
       }
     } catch {
       // ignore — just show inbox
@@ -54,7 +56,7 @@ export default function InboxPage() {
             </Button>
           </div>
         )}
-        <AIBrief />
+        <AIBrief plan={plan} />
         <EmailList
           key={refreshKey}
           onSelectEmail={handleSelectEmail}

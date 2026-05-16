@@ -51,19 +51,19 @@ export function AIBrief({ plan }: { plan?: string }) {
   // Show locked teaser for free users
   if (!plan || plan === 'free') {
     return (
-      <div className="relative border rounded-lg p-4 mb-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 overflow-hidden">
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-500" />
-            <span className="font-medium text-sm">AI Daily Brief</span>
-            <Badge variant="secondary" className="text-xs">Pro</Badge>
+      <div className="border-b p-3 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+            <span className="font-medium text-xs truncate">AI Daily Brief</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Pro</Badge>
           </div>
-          <Button size="sm" variant="outline" onClick={() => window.location.href = '/pricing'}>
-            Unlock with Pro
+          <Button size="sm" variant="outline" className="text-xs h-7 px-2 shrink-0" onClick={() => window.location.href = '/pricing'}>
+            Unlock
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Get a daily AI summary of your inbox — priorities, action items, and what needs attention.
+        <p className="text-[11px] text-muted-foreground mt-1 leading-tight">
+          Get a daily AI summary — priorities, action items, and what needs attention.
         </p>
       </div>
     );

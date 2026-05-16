@@ -42,7 +42,13 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ accounts });
+  // Include workspace plan for client-side gating
+  const [ws] = await db
+    .select({ plan: schema.workspaces.plan })
+    .from(schema.workspaces)
+    .where(eq(schema.workspaces.id, workspace.workspaceId));
+
+  return NextResponse.json({ accounts, plan: ws?.plan || 'free' });
 }
 
 export async function POST(request: NextRequest) {
