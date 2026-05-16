@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
+import LandingPage from './(marketing)/page';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +15,9 @@ export default async function Home() {
     console.error('Session error:', error);
   }
 
-  // Not logged in - go to login
+  // Not logged in — show landing page
   if (!session?.user) {
-    redirect('/login');
+    return <LandingPage />;
   }
 
   // Check if user has completed onboarding
@@ -35,9 +36,9 @@ export default async function Home() {
       columns: { id: true },
     });
 
-    // If they have no accounts, start onboarding from welcome
+    // If they have no accounts, start connect-email flow
     if (accountCount.length === 0) {
-      redirect('/welcome');
+      redirect('/connect-email');
     }
 
     // If they have accounts but haven't completed onboarding, mark as complete
