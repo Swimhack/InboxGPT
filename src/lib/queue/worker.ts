@@ -17,6 +17,7 @@ import {
   type NormalizeInboundJobData,
 } from './simple-queue';
 import { processEmailSync, processAIJob, processNormalizeInbound } from './processors';
+import { startBriefScheduler } from '@/lib/brief/scheduler';
 
 let isRunning = false;
 let workerInterval: NodeJS.Timeout | null = null;
@@ -135,6 +136,9 @@ export function startWorker(): void {
   processLoop();
 
   console.log('[Worker] Job worker started');
+
+  // Start the morning brief scheduler
+  startBriefScheduler();
 }
 
 /**
