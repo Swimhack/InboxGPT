@@ -10,6 +10,7 @@ import { db, schema } from '../db';
 import { decryptJSON, encryptJSON } from '../crypto/encryption';
 import { refreshGoogleToken, refreshMicrosoftToken } from '../email/token-refresh';
 import { twilioAdapter } from '../channels/twilio';
+import { canSyncMore } from '@/lib/ai/limits';
 import type { EmailSyncJobData, AIProcessingJobData, NormalizeInboundJobData } from './simple-queue';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -59,6 +60,12 @@ export async function processEmailSync(data: EmailSyncJobData): Promise<{
   }
   if (!account.credentialsEncrypted) {
     throw new Error(`Account ${accountId} has no credentials`);
+  }
+
+  const syncCheck = await canSyncMore(account.workspaceId);
+  if (!syncCheck.allowed) {
+    console.log(`[sync] Workspace ${account.workspaceId} hit sync limit (${syncCheck.currentCount}/${syncCheck.limit}). Skipping.`);
+    return { newEmailCount: 0, totalFetched: 0, skipped: true };
   }
 
   // 2. Get credentials and refresh if needed
