@@ -73,6 +73,7 @@ export async function handleStripeWebhook(event: Stripe.Event) {
       const workspaceId = sub.metadata?.workspaceId;
       if (!workspaceId) return;
 
+      // Downgrade workspace
       await db
         .update(schema.workspaces)
         .set({
@@ -81,6 +82,24 @@ export async function handleStripeWebhook(event: Stripe.Event) {
           updatedAt: new Date(),
         })
         .where(eq(schema.workspaces.id, workspaceId));
+
+      // Pause all accounts except the oldest one
+      const accounts = await db
+        .select({ id: schema.channelAccounts.id, createdAt: schema.channelAccounts.createdAt })
+        .from(schema.channelAccounts)
+        .where(eq(schema.channelAccounts.workspaceId, workspaceId))
+        .orderBy(schema.channelAccounts.createdAt);
+
+      if (accounts.length > 1) {
+        const idsToPause = accounts.slice(1).map((a) => a.id);
+        for (const id of idsToPause) {
+          await db
+            .update(schema.channelAccounts)
+            .set({ status: 'paused', updatedAt: new Date() })
+            .where(eq(schema.channelAccounts.id, id));
+        }
+        console.log(`[stripe] Paused ${idsToPause.length} extra accounts for workspace ${workspaceId}`);
+      }
 
       console.log(`[stripe] Subscription cancelled → workspace ${workspaceId} downgraded to free`);
       break;
