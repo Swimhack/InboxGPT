@@ -1,84 +1,56 @@
+import { db, schema } from '@/lib/db';
+import { eq, sql } from 'drizzle-orm';
+import { hasAI, PLANS, type PlanId } from '@/lib/stripe/plans';
 
-import { db } from '@/lib/db';
-import { aiUsage, users } from '@/lib/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
-
-export const AI_LIMITS = {
-    // Free tier (founder pays)
-    FREE_TIER_EMAILS_PER_USER: 50,      // Lifetime limit per user
-    FREE_TIER_MONTHLY_BUDGET_CENTS: 2000, // $20 total monthly cap
-
-    // BYOK (user pays)
-    BYOK_RATE_LIMIT_PER_MINUTE: 10,     // Prevent abuse
-};
-
-export async function getUser(userId: string) {
-    return await db.query.users.findFirst({
-        where: eq(users.id, userId),
-    });
-}
-
-export async function getUserUsage(userId: string) {
-    const result = await db
-        .select({
-            totalEmailsProcessed: sql<number>`sum(${aiUsage.messagesProcessed})`,
-        })
-        .from(aiUsage)
-        .where(eq(aiUsage.userId, userId));
-
-    return {
-        totalEmailsProcessed: result[0]?.totalEmailsProcessed || 0
-    };
-}
-
-export async function getMonthlySpend() {
-    // Get start of current month YYYY-MM-DD
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-
-    const result = await db
-        .select({
-            totalCost: sql<number>`sum(${aiUsage.estimatedCostCents})`,
-        })
-        .from(aiUsage)
-        .where(sql`${aiUsage.date} >= ${startOfMonth}`);
-
-    return result[0]?.totalCost || 0;
-}
-
-
-export async function canProcessWithAI(userId: string): Promise<{
-    allowed: boolean;
-    reason?: string;
-    useFounderKey: boolean;
+export async function canUseAI(workspaceId: string): Promise<{
+  allowed: boolean;
+  reason?: string;
 }> {
-    const user = await getUser(userId);
-    if (!user) return { allowed: false, reason: 'User not found', useFounderKey: false };
+  const [workspace] = await db
+    .select({ plan: schema.workspaces.plan })
+    .from(schema.workspaces)
+    .where(eq(schema.workspaces.id, workspaceId));
 
-    // User has own key - always allowed
-    if (user.userAnthropicKey || user.userOpenaiKey) {
-        return { allowed: true, useFounderKey: false };
-    }
+  if (!workspace) return { allowed: false, reason: 'Workspace not found' };
 
-    // Check free tier limit
-    const usage = await getUserUsage(userId);
-    if (usage.totalEmailsProcessed >= AI_LIMITS.FREE_TIER_EMAILS_PER_USER) {
-        return {
-            allowed: false,
-            reason: 'Free AI limit reached. Add your own API key to continue.',
-            useFounderKey: false
-        };
-    }
+  if (!hasAI(workspace.plan || 'free')) {
+    return { allowed: false, reason: 'upgrade_required' };
+  }
 
-    // Check global monthly budget
-    const monthlySpend = await getMonthlySpend();
-    if (monthlySpend >= AI_LIMITS.FREE_TIER_MONTHLY_BUDGET_CENTS) {
-        return {
-            allowed: false,
-            reason: 'Demo AI budget exhausted this month. Add your own API key.',
-            useFounderKey: false
-        };
-    }
+  return { allowed: true };
+}
 
-    return { allowed: true, useFounderKey: true };
+export async function canSyncMore(workspaceId: string): Promise<{
+  allowed: boolean;
+  currentCount: number;
+  limit: number;
+}> {
+  const [workspace] = await db
+    .select({ plan: schema.workspaces.plan })
+    .from(schema.workspaces)
+    .where(eq(schema.workspaces.id, workspaceId));
+
+  const plan = workspace?.plan || 'free';
+  const planDef = PLANS[plan as PlanId] ?? PLANS.free;
+  const limit = planDef.messagesPerMonth;
+
+  // Count messages synced this month
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const [result] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.messages)
+    .where(
+      sql`${schema.messages.workspaceId} = ${workspaceId} AND ${schema.messages.receivedAt} >= ${startOfMonth.toISOString()}`
+    );
+
+  const currentCount = result?.count || 0;
+
+  return {
+    allowed: currentCount < limit,
+    currentCount,
+    limit,
+  };
 }

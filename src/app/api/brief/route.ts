@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { generateBriefForUser } from '@/lib/ai/brief';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { canUseAI } from '@/lib/ai/limits';
+import { getWorkspace } from '@/lib/auth/workspace';
 
 const BRIEF_RATE_LIMIT = { limit: 5, windowMs: 60_000 }; // 5 per minute
 
@@ -18,6 +20,16 @@ export async function POST(req: Request) {
       { error: `Too many requests. Try again in ${rl.retryAfter}s.` },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
     );
+  }
+
+  // Plan gating: AI brief is a Pro feature
+  const workspace = await getWorkspace();
+  if (!workspace) {
+    return NextResponse.json({ error: 'No workspace' }, { status: 400 });
+  }
+  const { allowed, reason } = await canUseAI(workspace.workspaceId);
+  if (!allowed) {
+    return NextResponse.json({ error: reason, upgrade: true }, { status: 403 });
   }
 
   try {
