@@ -6,7 +6,7 @@ import { createCheckoutSession } from '@/lib/stripe/checkout';
 import { getPriceId, type PlanId } from '@/lib/stripe/plans';
 
 const bodySchema = z.object({
-  plan: z.enum(['pro', 'business']),
+  plan: z.enum(['pro']),
 });
 
 export async function POST(request: NextRequest) {
@@ -24,19 +24,19 @@ export async function POST(request: NextRequest) {
   const priceId = getPriceId(body.data.plan as PlanId);
   if (!priceId) {
     return NextResponse.json(
-      { error: 'Stripe price not configured. Set STRIPE_PRO_PRICE_ID / STRIPE_BUSINESS_PRICE_ID.' },
+      { error: 'Stripe price not configured. Set STRIPE_PRO_PRICE_ID.' },
       { status: 501 }
     );
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://inboxgpt.fly.dev';
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://inboxgpt.stricklandai.com';
 
   const checkoutSession = await createCheckoutSession({
     workspaceId: workspace.workspaceId,
     priceId,
     customerEmail: session.user.email,
-    successUrl: `${baseUrl}/settings?upgraded=true`,
-    cancelUrl: `${baseUrl}/pricing`,
+    successUrl: `${baseUrl}/inbox?upgraded=true`,
+    cancelUrl: `${baseUrl}/inbox`,
   });
 
   return NextResponse.json({ url: checkoutSession.url });

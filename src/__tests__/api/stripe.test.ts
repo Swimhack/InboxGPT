@@ -71,7 +71,6 @@ jest.mock('next/headers', () => ({
 beforeAll(() => {
   process.env.STRIPE_SECRET_KEY = 'sk_test_fake';
   process.env.STRIPE_PRO_PRICE_ID = 'price_pro_test';
-  process.env.STRIPE_BUSINESS_PRICE_ID = 'price_business_test';
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
   process.env.NEXTAUTH_URL = 'https://inboxgpt.fly.dev';
 });
@@ -124,7 +123,7 @@ describe('POST /api/stripe/checkout', () => {
     const { POST } = await import('@/app/api/stripe/checkout/route');
     const req = new Request('http://localhost/api/stripe/checkout', {
       method: 'POST',
-      body: JSON.stringify({ plan: 'business' }),
+      body: JSON.stringify({ plan: 'pro' }),
       headers: { 'Content-Type': 'application/json' },
     });
     const res = await POST(req as never);
@@ -309,13 +308,13 @@ describe('POST /api/stripe/webhooks', () => {
     });
   });
 
-  it('handles customer.subscription.updated — updates plan', async () => {
+  it('handles customer.subscription.updated — updates plan to pro', async () => {
     const fakeEvent = {
       type: 'customer.subscription.updated',
       data: {
         object: {
           metadata: { workspaceId: 'ws-uuid' },
-          items: { data: [{ price: { id: 'price_business_test' } }] },
+          items: { data: [{ price: { id: 'price_pro_test' } }] },
         },
       },
     };
@@ -329,7 +328,7 @@ describe('POST /api/stripe/webhooks', () => {
     const res = await POST(req as never);
 
     expect(res.status).toBe(200);
-    expect(updatedWorkspaceRows[0]).toMatchObject({ plan: 'business' });
+    expect(updatedWorkspaceRows[0]).toMatchObject({ plan: 'pro' });
   });
 
   it('returns 200 even for unknown event types (no retries)', async () => {

@@ -13,7 +13,7 @@ interface BillingActionsProps {
 export function BillingActions({ currentPlan, hasSubscription }: BillingActionsProps) {
   const [loading, setLoading] = useState<string | null>(null);
 
-  const handleUpgrade = async (plan: 'pro' | 'business') => {
+  const handleUpgrade = async (plan: 'pro') => {
     setLoading(plan);
     try {
       const res = await fetch('/api/stripe/checkout', {
@@ -50,27 +50,11 @@ export function BillingActions({ currentPlan, hasSubscription }: BillingActionsP
   return (
     <div className="flex flex-wrap gap-3">
       {currentPlan === 'free' && (
-        <>
-          <Button onClick={() => handleUpgrade('pro')} disabled={loading !== null}>
-            {loading === 'pro' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Upgrade to Pro — $12/mo
-            <ArrowUpRight className="ml-2 h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={() => handleUpgrade('business')} disabled={loading !== null}>
-            {loading === 'business' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Upgrade to Business — $29/mo
-          </Button>
-        </>
-      )}
-
-      {currentPlan === 'pro' && (
-        <>
-          <Button variant="outline" onClick={() => handleUpgrade('business')} disabled={loading !== null}>
-            {loading === 'business' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Upgrade to Business — $29/mo
-            <ArrowUpRight className="ml-2 h-4 w-4" />
-          </Button>
-        </>
+        <Button onClick={() => handleUpgrade('pro')} disabled={loading !== null}>
+          {loading === 'pro' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Upgrade to Pro — $9/mo
+          <ArrowUpRight className="ml-2 h-4 w-4" />
+        </Button>
       )}
 
       {hasSubscription && (

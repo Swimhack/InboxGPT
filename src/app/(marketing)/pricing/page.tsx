@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Check, Loader2, Mail, Send } from 'lucide-react';
 import { PLANS, type PlanId } from '@/lib/stripe/plans';
 
-const PLAN_ORDER: PlanId[] = ['free', 'pro', 'business'];
+const PLAN_ORDER: PlanId[] = ['free', 'pro'];
 
 const SERVICES = [
   'Email inbox management',
@@ -109,7 +109,7 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
           {PLAN_ORDER.map((planId) => {
             const plan = PLANS[planId];
             const isPro = planId === 'pro';
