@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { encryptJSON } from '@/lib/crypto/encryption';
 import type { ImapCredentials } from '@/lib/crypto/encryption';
 import { z } from 'zod';
-import { canAddChannel } from '@/lib/stripe/plans';
+import { canAddChannel, isAdmin } from '@/lib/stripe/plans';
 
 const addImapAccountSchema = z.object({
   email: z.string().email(),
@@ -48,7 +48,8 @@ export async function GET() {
     .from(schema.workspaces)
     .where(eq(schema.workspaces.id, workspace.workspaceId));
 
-  return NextResponse.json({ accounts, plan: ws?.plan || 'free' });
+  const effectivePlan = isAdmin(session.user.email) ? 'pro' : (ws?.plan || 'free');
+  return NextResponse.json({ accounts, plan: effectivePlan });
 }
 
 export async function POST(request: NextRequest) {
