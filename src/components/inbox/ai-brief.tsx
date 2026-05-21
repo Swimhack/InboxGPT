@@ -25,15 +25,9 @@ interface BriefData {
   actionItems: BriefActionItem[];
 }
 
-type BriefState = 'loading' | 'ready' | 'error' | 'dismissed';
+type BriefState = 'loading' | 'ready' | 'error' | 'dismissed' | 'locked';
 
 const DISMISS_KEY = 'inboxgpt-brief-dismissed';
-
-const urgencyColors = {
-  high: 'text-red-600 bg-red-50',
-  medium: 'text-amber-600 bg-amber-50',
-  low: 'text-blue-600 bg-blue-50',
-};
 
 const priorityVariant = {
   urgent: 'destructive' as const,
@@ -43,31 +37,11 @@ const priorityVariant = {
 };
 
 export function AIBrief({ plan }: { plan?: string }) {
-  const [state, setState] = useState<BriefState>('loading');
+  const isLocked = !plan || plan === 'free';
+  const [state, setState] = useState<BriefState>(isLocked ? 'locked' : 'loading');
   const [brief, setBrief] = useState<BriefData | null>(null);
   const [error, setError] = useState<string>('');
   const [collapsed, setCollapsed] = useState(false);
-
-  // Show locked teaser for free users
-  if (!plan || plan === 'free') {
-    return (
-      <div className="border-b p-3 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
-            <span className="font-medium text-xs truncate">AI Daily Brief</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Pro</Badge>
-          </div>
-          <Button size="sm" variant="outline" className="text-xs h-7 px-2 shrink-0" onClick={() => window.location.href = '/pricing'}>
-            Unlock
-          </Button>
-        </div>
-        <p className="text-[11px] text-muted-foreground mt-1 leading-tight">
-          Get a daily AI summary — priorities, action items, and what needs attention.
-        </p>
-      </div>
-    );
-  }
 
   const fetchBrief = useCallback(async () => {
     setState('loading');
@@ -93,13 +67,17 @@ export function AIBrief({ plan }: { plan?: string }) {
   }, []);
 
   useEffect(() => {
+    if (isLocked) {
+      setState('locked');
+      return;
+    }
     const dismissed = sessionStorage.getItem(DISMISS_KEY);
     if (dismissed) {
       setState('dismissed');
       return;
     }
     fetchBrief();
-  }, [fetchBrief]);
+  }, [fetchBrief, isLocked]);
 
   const handleDismiss = () => {
     sessionStorage.setItem(DISMISS_KEY, '1');
@@ -110,6 +88,26 @@ export function AIBrief({ plan }: { plan?: string }) {
     sessionStorage.removeItem(DISMISS_KEY);
     fetchBrief();
   };
+
+  if (state === 'locked') {
+    return (
+      <div className="border-b p-3 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+            <span className="font-medium text-xs truncate">AI Daily Brief</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Pro</Badge>
+          </div>
+          <Button size="sm" variant="outline" className="text-xs h-7 px-2 shrink-0" onClick={() => window.location.href = '/pricing'}>
+            Unlock
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-1 leading-tight">
+          Get a daily AI summary — priorities, action items, and what needs attention.
+        </p>
+      </div>
+    );
+  }
 
   if (state === 'dismissed') {
     return (
