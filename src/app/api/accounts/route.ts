@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     .from(schema.workspaces)
     .where(eq(schema.workspaces.id, workspace.workspaceId));
 
-  if (!canAddChannel(ws?.plan || 'free', existingAccounts.length)) {
+  if (!canAddChannel(ws?.plan || 'free', existingAccounts.length, session.user.email)) {
     return NextResponse.json(
       { error: 'Account limit reached. Upgrade to Pro for unlimited accounts.', upgrade: true },
       { status: 403 },

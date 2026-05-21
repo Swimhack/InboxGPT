@@ -1,3 +1,12 @@
+// Admin emails always get full Pro access regardless of plan
+const ADMIN_EMAILS = new Set([
+  'swimhack@gmail.com',
+]);
+
+export function isAdmin(email: string | null | undefined): boolean {
+  return !!email && ADMIN_EMAILS.has(email.toLowerCase());
+}
+
 export type PlanId = 'free' | 'pro';
 
 export interface PlanDef {
@@ -58,17 +67,20 @@ export function planFromPriceId(priceId: string): PlanId {
   return 'free';
 }
 
-export function canAddChannel(plan: string, currentCount: number): boolean {
+export function canAddChannel(plan: string, currentCount: number, email?: string | null): boolean {
+  if (isAdmin(email)) return true;
   const p = PLANS[plan as PlanId] ?? PLANS.free;
   return currentCount < p.channels;
 }
 
-export function canSyncMessages(plan: string, currentMonthCount: number): boolean {
+export function canSyncMessages(plan: string, currentMonthCount: number, email?: string | null): boolean {
+  if (isAdmin(email)) return true;
   const p = PLANS[plan as PlanId] ?? PLANS.free;
   return currentMonthCount < p.messagesPerMonth;
 }
 
-export function hasAI(plan: string): boolean {
+export function hasAI(plan: string, email?: string | null): boolean {
+  if (isAdmin(email)) return true;
   const p = PLANS[plan as PlanId] ?? PLANS.free;
   return p.ai;
 }

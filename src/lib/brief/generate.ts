@@ -42,7 +42,7 @@ export async function generateBrief(
   userName: string,
   plan: string,
 ): Promise<BriefData | null> {
-  const isPro = hasAI(plan);
+  const isPro = hasAI(plan, userEmail);
   const itemLimit = isPro ? 20 : 5;
 
   // Gather data in parallel

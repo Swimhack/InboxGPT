@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   if (!workspace) {
     return NextResponse.json({ error: 'No workspace' }, { status: 400 });
   }
-  const { allowed, reason } = await canUseAI(workspace.workspaceId);
+  const { allowed, reason } = await canUseAI(workspace.workspaceId, session.user.email);
   if (!allowed) {
     return NextResponse.json({ error: reason, upgrade: true }, { status: 403 });
   }
