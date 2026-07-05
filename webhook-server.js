@@ -3,7 +3,11 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 
 const PORT = 9876;
-const SECRET = process.env.WEBHOOK_SECRET || 'inboxgpt-deploy-secret';
+const SECRET = process.env.WEBHOOK_SECRET;
+if (!SECRET) {
+  console.error('FATAL: WEBHOOK_SECRET env var is required');
+  process.exit(1);
+}
 const DEPLOY_SCRIPT = '/home/james/InboxGPT/deploy.sh';
 
 const server = http.createServer((req, res) => {
@@ -16,18 +20,24 @@ const server = http.createServer((req, res) => {
   let body = '';
   req.on('data', chunk => { body += chunk; });
   req.on('end', () => {
-    // Verify GitHub signature
+    // Verify GitHub signature — REQUIRED, never deploy unsigned requests
     const sig = req.headers['x-hub-signature-256'];
-    if (sig) {
-      const hmac = crypto.createHmac('sha256', SECRET);
-      hmac.update(body);
-      const expected = 'sha256=' + hmac.digest('hex');
-      if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-        console.log('Invalid signature');
-        res.writeHead(403);
-        res.end('Invalid signature');
-        return;
-      }
+    if (!sig) {
+      console.log('Missing signature');
+      res.writeHead(403);
+      res.end('Signature required');
+      return;
+    }
+    const hmac = crypto.createHmac('sha256', SECRET);
+    hmac.update(body);
+    const expected = 'sha256=' + hmac.digest('hex');
+    const sigBuf = Buffer.from(sig);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      console.log('Invalid signature');
+      res.writeHead(403);
+      res.end('Invalid signature');
+      return;
     }
 
     // Only deploy on push to main
