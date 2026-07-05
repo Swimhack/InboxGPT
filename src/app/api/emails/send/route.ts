@@ -6,6 +6,11 @@ import { eq, and } from 'drizzle-orm';
 import { decryptJSON, encryptJSON } from '@/lib/crypto/encryption';
 import { refreshGoogleToken } from '@/lib/email/token-refresh';
 import { z } from 'zod';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+// 30 sends per user per 10 minutes — protects the user's upstream mail
+// account (Gmail/Outlook) from abuse if a session is compromised.
+const SEND_RATE_LIMIT = { limit: 30, windowMs: 600_000 } as const;
 
 const sendEmailSchema = z.object({
   accountId: z.string(),
@@ -76,6 +81,15 @@ function buildRawMessage(opts: {
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rl = checkRateLimit(`send:${session.user.id}`, SEND_RATE_LIMIT);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too Many Requests' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   const workspace = await getWorkspace();
   if (!workspace) return NextResponse.json({ error: 'No workspace' }, { status: 400 });
 
