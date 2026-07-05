@@ -45,3 +45,7 @@ drizzle/
 
 # OS
 Thumbs.db
+
+# OAuth client secrets — never commit
+.claude/client_secret*
+client_secret*.json
