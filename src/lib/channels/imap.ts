@@ -64,7 +64,7 @@ export const imapAdapter: ChannelAdapter = {
       port: creds.smtpPort ?? 587,
       secure: creds.smtpSecure ?? (creds.smtpPort === 465),
       auth: { user: creds.username, pass: creds.password },
-      tls: { rejectUnauthorized: false },
+      tls: { rejectUnauthorized: process.env.IMAP_TLS_REJECT_UNAUTHORIZED !== 'false' },
     });
 
     const fromDisplay = account.displayName || account.externalAccountId;

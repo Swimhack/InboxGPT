@@ -429,7 +429,7 @@ async function syncViaImap(
     secure: creds.imapSecure ?? creds.imapPort === 993,
     auth: { user: creds.username, pass: creds.password },
     logger: false,
-    tls: { rejectUnauthorized: false },
+    tls: { rejectUnauthorized: process.env.IMAP_TLS_REJECT_UNAUTHORIZED !== 'false' },
   });
 
   try {

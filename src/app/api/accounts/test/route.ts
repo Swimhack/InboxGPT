@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     secure,
     auth: { user: data.email, pass: data.password },
     logger: false,
-    tls: { rejectUnauthorized: false },
+    tls: { rejectUnauthorized: process.env.IMAP_TLS_REJECT_UNAUTHORIZED !== 'false' },
     connectionTimeout: 10000,
     greetingTimeout: 5000,
     socketTimeout: 15000,

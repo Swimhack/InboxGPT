@@ -35,7 +35,7 @@ export async function verifyImap(input: VerifyInput): Promise<VerifyResult> {
     secure: input.secure,
     auth: { user: input.user, pass: input.pass },
     logger: false,
-    tls: { rejectUnauthorized: false },
+    tls: { rejectUnauthorized: process.env.IMAP_TLS_REJECT_UNAUTHORIZED !== 'false' },
     socketTimeout: 15_000,
   });
 
