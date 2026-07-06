@@ -61,31 +61,16 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === 'google' && user.email) {
-        // Find existing user by email
-        let existing = await db.query.users.findFirst({
+        // Find existing user by login email ONLY. We deliberately do NOT
+        // match against channel_accounts.externalAccountId: controlling a
+        // connected mailbox (e.g. a shared support@ inbox) must never grant
+        // ownership of the platform user that connected it. The previous
+        // "adoption" path here was an account-takeover vector — it handed
+        // the owning user's entire account (and rewrote their login email)
+        // to whoever signed in with Google as the connected address.
+        const existing = await db.query.users.findFirst({
           where: eq(schema.users.email, user.email),
         });
-
-        if (!existing) {
-          // Check if this Google email is used as a channel_account under another user
-          // If so, adopt that user's identity to preserve their data
-          const linkedAccount = await db.query.channelAccounts.findFirst({
-            where: eq(schema.channelAccounts.externalAccountId, user.email),
-          });
-
-          if (linkedAccount && linkedAccount.userId) {
-            // Adopt the existing user that owns this channel account
-            existing = await db.query.users.findFirst({
-              where: eq(schema.users.id, linkedAccount.userId),
-            });
-            // Update that user's login email to the Google email
-            if (existing) {
-              await db.update(schema.users)
-                .set({ email: user.email, name: user.name || existing.name })
-                .where(eq(schema.users.id, existing.id));
-            }
-          }
-        }
 
         if (!existing) {
           const id = generateId();
