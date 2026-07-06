@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, desc, and, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
   const offset = (params.page - 1) * params.limit;
 
   try {
-    const rows = await db
+    const rows = await withWorkspace(workspace.workspaceId, (tx) => tx
       .select({
         id: schema.messages.id,
         channelAccountId: schema.messages.channelAccountId,
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       .where(and(...conditions))
       .orderBy(desc(schema.messages.receivedAt))
       .limit(params.limit)
-      .offset(offset);
+      .offset(offset));
 
     // Map to the shape the frontend expects (backward compat).
     const emails = rows.map((r) => ({

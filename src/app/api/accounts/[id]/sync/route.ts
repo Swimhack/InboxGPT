@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { addEmailSyncJob } from '@/lib/queue';
 
@@ -20,7 +20,7 @@ export async function POST(
 
   const { id } = await params;
 
-  const [account] = await db
+  const [account] = await withWorkspace(workspace.workspaceId, (tx) => tx
     .select({ id: schema.channelAccounts.id })
     .from(schema.channelAccounts)
     .where(
@@ -28,7 +28,7 @@ export async function POST(
         eq(schema.channelAccounts.id, id),
         eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
       )
-    );
+    ));
 
   if (!account) {
     return NextResponse.json({ error: 'Account not found' }, { status: 404 });

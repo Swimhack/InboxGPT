@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { addEmailSyncJob } from '@/lib/queue';
 import { z } from 'zod';
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { accountId, type } = syncSchema.parse(body);
 
-    const [account] = await db
+    const [account] = await withWorkspace(workspace.workspaceId, (tx) => tx
       .select({ id: schema.channelAccounts.id })
       .from(schema.channelAccounts)
       .where(
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
           eq(schema.channelAccounts.id, accountId),
           eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
         )
-      );
+      ));
 
     if (!account) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
@@ -86,7 +86,7 @@ export async function GET() {
     return NextResponse.json({ accounts: [] });
   }
 
-  const accounts = await db
+  const accounts = await withWorkspace(workspace.workspaceId, (tx) => tx
     .select({
       id: schema.channelAccounts.id,
       externalAccountId: schema.channelAccounts.externalAccountId,
@@ -96,7 +96,7 @@ export async function GET() {
       lastError: schema.channelAccounts.lastError,
     })
     .from(schema.channelAccounts)
-    .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId));
+    .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId)));
 
   return NextResponse.json({ accounts });
 }

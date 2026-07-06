@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { generateBrief } from '@/lib/brief/generate';
 import { renderBriefEmail } from '@/lib/brief/email-template';
@@ -18,10 +18,10 @@ export async function POST() {
     return NextResponse.json({ error: 'No workspace' }, { status: 400 });
   }
 
-  const [ws] = await db
+  const [ws] = await withWorkspace(workspace.workspaceId, (tx) => tx
     .select({ plan: schema.workspaces.plan })
     .from(schema.workspaces)
-    .where(eq(schema.workspaces.id, workspace.workspaceId));
+    .where(eq(schema.workspaces.id, workspace.workspaceId)));
 
   const briefData = await generateBrief(
     workspace.workspaceId,

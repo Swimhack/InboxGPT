@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -16,17 +16,20 @@ export async function GET(
 
   const { id } = await params;
 
-  const [msg] = await db
-    .select()
-    .from(schema.messages)
-    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
+  const msg = await withWorkspace(workspace.workspaceId, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(schema.messages)
+      .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
+
+    // Mark as read
+    if (row && !row.isRead) {
+      await tx.update(schema.messages).set({ isRead: true, updatedAt: new Date() }).where(eq(schema.messages.id, id));
+    }
+    return row;
+  });
 
   if (!msg) return NextResponse.json({ error: 'Email not found' }, { status: 404 });
-
-  // Mark as read
-  if (!msg.isRead) {
-    await db.update(schema.messages).set({ isRead: true, updatedAt: new Date() }).where(eq(schema.messages.id, id));
-  }
 
   // Map Track A → shape the display component expects
   const from = msg.fromIdentity as { kind?: string; value?: string; display?: string } | null;
@@ -78,10 +81,10 @@ export async function PATCH(
   const body = await request.json();
   const updates = updateSchema.parse(body);
 
-  await db
+  await withWorkspace(workspace.workspaceId, (tx) => tx
     .update(schema.messages)
     .set({ ...updates, updatedAt: new Date() })
-    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
+    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId))));
 
   return NextResponse.json({ success: true });
 }
@@ -97,10 +100,10 @@ export async function DELETE(
 
   const { id } = await params;
 
-  await db
+  await withWorkspace(workspace.workspaceId, (tx) => tx
     .update(schema.messages)
     .set({ isDeleted: true, updatedAt: new Date() })
-    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId)));
+    .where(and(eq(schema.messages.id, id), eq(schema.messages.workspaceId, workspace.workspaceId))));
 
   return NextResponse.json({ success: true });
 }

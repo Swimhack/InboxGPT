@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 
 export async function GET(
@@ -19,7 +19,7 @@ export async function GET(
 
   const { id } = await params;
 
-  const [account] = await db
+  const [account] = await withWorkspace(workspace.workspaceId, (tx) => tx
     .select({
       id: schema.channelAccounts.id,
       externalAccountId: schema.channelAccounts.externalAccountId,
@@ -36,7 +36,7 @@ export async function GET(
         eq(schema.channelAccounts.id, id),
         eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
       )
-    );
+    ));
 
   if (!account) {
     return NextResponse.json({ error: 'Account not found' }, { status: 404 });
@@ -60,14 +60,14 @@ export async function DELETE(
 
   const { id } = await params;
 
-  await db
+  await withWorkspace(workspace.workspaceId, (tx) => tx
     .delete(schema.channelAccounts)
     .where(
       and(
         eq(schema.channelAccounts.id, id),
         eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
       )
-    );
+    ));
 
   return NextResponse.json({ success: true });
 }
@@ -101,7 +101,7 @@ export async function PATCH(
 
   updates.updatedAt = new Date();
 
-  await db
+  await withWorkspace(workspace.workspaceId, (tx) => tx
     .update(schema.channelAccounts)
     .set(updates)
     .where(
@@ -109,7 +109,7 @@ export async function PATCH(
         eq(schema.channelAccounts.id, id),
         eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
       )
-    );
+    ));
 
   return NextResponse.json({ success: true });
 }

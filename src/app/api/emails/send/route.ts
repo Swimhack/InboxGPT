@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { decryptJSON, encryptJSON } from '@/lib/crypto/encryption';
 import { refreshGoogleToken } from '@/lib/email/token-refresh';
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = sendEmailSchema.parse(body);
 
-    const [account] = await db
+    const [account] = await withWorkspace(workspace.workspaceId, (tx) => tx
       .select()
       .from(schema.channelAccounts)
       .where(
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
           eq(schema.channelAccounts.id, data.accountId),
           eq(schema.channelAccounts.workspaceId, workspace.workspaceId)
         )
-      );
+      ));
 
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     if (!account.credentialsEncrypted) {
@@ -127,10 +127,10 @@ export async function POST(request: NextRequest) {
       if (isExpired && creds.refreshToken) {
         const refreshed = await refreshGoogleToken(creds.refreshToken);
         creds = { ...creds, accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt };
-        await db
+        await withWorkspace(workspace.workspaceId, (tx) => tx
           .update(schema.channelAccounts)
           .set({ credentialsEncrypted: encryptJSON(creds), updatedAt: new Date() })
-          .where(eq(schema.channelAccounts.id, account.id));
+          .where(eq(schema.channelAccounts.id, account.id)));
       }
 
       const rawMessage = buildRawMessage({
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Save outbound message to DB
-    const [inserted] = await db
+    const [inserted] = await withWorkspace(workspace.workspaceId, (tx) => tx
       .insert(schema.messages)
       .values({
         workspaceId: workspace.workspaceId,
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
         receivedAt: new Date(),
         isRead: true,
       })
-      .returning({ id: schema.messages.id });
+      .returning({ id: schema.messages.id }));
 
     return NextResponse.json({ success: true, messageId, emailId: inserted.id });
   } catch (error) {

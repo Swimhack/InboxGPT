@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { addEmailSyncJob } from '@/lib/queue';
 
@@ -15,7 +15,7 @@ export async function POST() {
     return NextResponse.json({ error: 'No workspace' }, { status: 400 });
   }
 
-  const accounts = await db
+  const accounts = await withWorkspace(workspace.workspaceId, (tx) => tx
     .select({ id: schema.channelAccounts.id, provider: schema.channelAccounts.provider })
     .from(schema.channelAccounts)
     .where(
@@ -23,7 +23,7 @@ export async function POST() {
         eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
         eq(schema.channelAccounts.status, 'active')
       )
-    );
+    ));
 
   if (accounts.length === 0) {
     return NextResponse.json({ message: 'No accounts to sync', syncing: 0 });

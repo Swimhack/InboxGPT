@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { encryptJSON } from '@/lib/crypto/encryption';
 import { resolveAutoconfig } from '@/lib/email/autoconfig';
 import { verifyImap } from '@/lib/email/imap-verify';
@@ -151,21 +151,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const existing = await db
-    .select({ id: schema.channelAccounts.id })
-    .from(schema.channelAccounts)
-    .where(
-      and(
-        eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
-        eq(schema.channelAccounts.provider, 'imap'),
-        eq(schema.channelAccounts.externalAccountId, body.email)
-      )
-    );
-
-  if (existing.length > 0) {
-    return NextResponse.json({ error: 'This email is already connected.' }, { status: 409 });
-  }
-
   const credentialsEncrypted = encryptJSON({
     username: body.email,
     password: body.password,
@@ -177,18 +162,39 @@ export async function POST(request: NextRequest) {
     smtpSecure,
   });
 
-  const [inserted] = await db
-    .insert(schema.channelAccounts)
-    .values({
-      workspaceId: workspace.workspaceId,
-      userId: session.user.id as string,
-      provider: 'imap',
-      externalAccountId: body.email,
-      displayName: body.displayName || body.email,
-      status: 'active',
-      credentialsEncrypted,
-    })
-    .returning({ id: schema.channelAccounts.id });
+  // Duplicate check + insert in one workspace-scoped transaction.
+  const inserted = await withWorkspace(workspace.workspaceId, async (tx) => {
+    const existing = await tx
+      .select({ id: schema.channelAccounts.id })
+      .from(schema.channelAccounts)
+      .where(
+        and(
+          eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+          eq(schema.channelAccounts.provider, 'imap'),
+          eq(schema.channelAccounts.externalAccountId, body.email)
+        )
+      );
+
+    if (existing.length > 0) return null;
+
+    const [row] = await tx
+      .insert(schema.channelAccounts)
+      .values({
+        workspaceId: workspace.workspaceId,
+        userId: session.user.id as string,
+        provider: 'imap',
+        externalAccountId: body.email,
+        displayName: body.displayName || body.email,
+        status: 'active',
+        credentialsEncrypted,
+      })
+      .returning({ id: schema.channelAccounts.id });
+    return row;
+  });
+
+  if (!inserted) {
+    return NextResponse.json({ error: 'This email is already connected.' }, { status: 409 });
+  }
 
   return NextResponse.json({
     success: true,

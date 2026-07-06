@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const { q, limit } = parsed.data;
 
   try {
-    const rows = await db
+    const rows = await withWorkspace(workspace.workspaceId, (tx) => tx
       .select({
         id: schema.messages.id,
         channelAccountId: schema.messages.channelAccountId,
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         )
       )
       .orderBy(desc(schema.messages.receivedAt))
-      .limit(limit);
+      .limit(limit));
 
     const emails = rows.map((r) => ({
       id: r.id,

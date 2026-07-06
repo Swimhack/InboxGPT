@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 import { encryptJSON } from '@/lib/crypto/encryption';
 import type { ImapCredentials } from '@/lib/crypto/encryption';
@@ -28,25 +28,28 @@ export async function GET() {
     return NextResponse.json({ error: 'No workspace' }, { status: 400 });
   }
 
-  const accounts = await db.query.channelAccounts.findMany({
-    where: eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
-    columns: {
-      id: true,
-      externalAccountId: true,
-      displayName: true,
-      provider: true,
-      lastSyncAt: true,
-      status: true,
-      lastError: true,
-      createdAt: true,
-    },
-  });
+  const { accounts, ws } = await withWorkspace(workspace.workspaceId, async (tx) => {
+    const accounts = await tx.query.channelAccounts.findMany({
+      where: eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+      columns: {
+        id: true,
+        externalAccountId: true,
+        displayName: true,
+        provider: true,
+        lastSyncAt: true,
+        status: true,
+        lastError: true,
+        createdAt: true,
+      },
+    });
 
-  // Include workspace plan for client-side gating
-  const [ws] = await db
-    .select({ plan: schema.workspaces.plan })
-    .from(schema.workspaces)
-    .where(eq(schema.workspaces.id, workspace.workspaceId));
+    // Include workspace plan for client-side gating
+    const [ws] = await tx
+      .select({ plan: schema.workspaces.plan })
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.id, workspace.workspaceId));
+    return { accounts, ws };
+  });
 
   const effectivePlan = isAdmin(session.user.email) ? 'pro' : (ws?.plan || 'free');
   return NextResponse.json({ accounts, plan: effectivePlan });
@@ -63,15 +66,18 @@ export async function POST(request: NextRequest) {
   }
 
   // Enforce free-tier account limit before parsing body
-  const existingAccounts = await db
-    .select({ id: schema.channelAccounts.id })
-    .from(schema.channelAccounts)
-    .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId));
+  const { existingAccounts, ws } = await withWorkspace(workspace.workspaceId, async (tx) => {
+    const existingAccounts = await tx
+      .select({ id: schema.channelAccounts.id })
+      .from(schema.channelAccounts)
+      .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId));
 
-  const [ws] = await db
-    .select({ plan: schema.workspaces.plan })
-    .from(schema.workspaces)
-    .where(eq(schema.workspaces.id, workspace.workspaceId));
+    const [ws] = await tx
+      .select({ plan: schema.workspaces.plan })
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.id, workspace.workspaceId));
+    return { existingAccounts, ws };
+  });
 
   if (!canAddChannel(ws?.plan || 'free', existingAccounts.length, session.user.email)) {
     return NextResponse.json(
@@ -85,13 +91,15 @@ export async function POST(request: NextRequest) {
     const data = addImapAccountSchema.parse(body);
 
     // Check if this workspace already connected this email
-    const existing = await db.query.channelAccounts.findFirst({
-      where: and(
-        eq(schema.channelAccounts.externalAccountId, data.email),
-        eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
-        eq(schema.channelAccounts.provider, 'imap'),
-      ),
-    });
+    const existing = await withWorkspace(workspace.workspaceId, (tx) =>
+      tx.query.channelAccounts.findFirst({
+        where: and(
+          eq(schema.channelAccounts.externalAccountId, data.email),
+          eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+          eq(schema.channelAccounts.provider, 'imap'),
+        ),
+      })
+    );
 
     if (existing) {
       return NextResponse.json({ error: 'You have already connected this email account' }, { status: 400 });
@@ -110,7 +118,7 @@ export async function POST(request: NextRequest) {
     };
     const credentialsEncrypted = encryptJSON(creds);
 
-    const [inserted] = await db.insert(schema.channelAccounts).values({
+    const [inserted] = await withWorkspace(workspace.workspaceId, (tx) => tx.insert(schema.channelAccounts).values({
       workspaceId: workspace.workspaceId,
       userId: session.user.id,
       provider: 'imap',
@@ -118,7 +126,7 @@ export async function POST(request: NextRequest) {
       displayName: data.displayName || data.email.split('@')[0],
       status: 'active',
       credentialsEncrypted,
-    }).returning({ id: schema.channelAccounts.id });
+    }).returning({ id: schema.channelAccounts.id }));
 
     return NextResponse.json({ success: true, accountId: inserted.id });
   } catch (error) {
@@ -147,19 +155,29 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Account ID required' }, { status: 400 });
   }
 
-  // Verify ownership via workspace scope
-  const account = await db.query.channelAccounts.findFirst({
-    where: and(
-      eq(schema.channelAccounts.id, accountId),
-      eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
-    ),
+  // Verify ownership via workspace scope, then delete in the same transaction
+  const found = await withWorkspace(workspace.workspaceId, async (tx) => {
+    const account = await tx.query.channelAccounts.findFirst({
+      where: and(
+        eq(schema.channelAccounts.id, accountId),
+        eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+      ),
+    });
+
+    if (!account) return false;
+
+    await tx.delete(schema.channelAccounts).where(
+      and(
+        eq(schema.channelAccounts.id, accountId),
+        eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+      )
+    );
+    return true;
   });
 
-  if (!account) {
+  if (!found) {
     return NextResponse.json({ error: 'Account not found' }, { status: 404 });
   }
-
-  await db.delete(schema.channelAccounts).where(eq(schema.channelAccounts.id, accountId));
 
   return NextResponse.json({ success: true });
 }

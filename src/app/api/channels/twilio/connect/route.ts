@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -115,35 +115,40 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Duplicate check — one Twilio account per workspace.
-  const existing = await db
-    .select({ id: schema.channelAccounts.id })
-    .from(schema.channelAccounts)
-    .where(
-      and(
-        eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
-        eq(schema.channelAccounts.provider, 'twilio'),
-        eq(schema.channelAccounts.externalAccountId, e164)
-      )
-    );
+  // Duplicate check + insert in one workspace-scoped transaction.
+  const inserted = await withWorkspace(workspace.workspaceId, async (tx) => {
+    const existing = await tx
+      .select({ id: schema.channelAccounts.id })
+      .from(schema.channelAccounts)
+      .where(
+        and(
+          eq(schema.channelAccounts.workspaceId, workspace.workspaceId),
+          eq(schema.channelAccounts.provider, 'twilio'),
+          eq(schema.channelAccounts.externalAccountId, e164)
+        )
+      );
 
-  if (existing.length > 0) {
+    if (existing.length > 0) return null;
+
+    const [row] = await tx
+      .insert(schema.channelAccounts)
+      .values({
+        workspaceId: workspace.workspaceId,
+        userId: session.user.id as string,
+        provider: 'twilio',
+        externalAccountId: e164,
+        displayName: body.displayName || e164,
+        status: 'active',
+        // No credentialsEncrypted — Twilio auth comes from TWILIO_AUTH_TOKEN env var at runtime.
+        credentialsEncrypted: null,
+      })
+      .returning({ id: schema.channelAccounts.id });
+    return row;
+  });
+
+  if (!inserted) {
     return NextResponse.json({ error: 'This phone number is already connected.' }, { status: 409 });
   }
-
-  const [inserted] = await db
-    .insert(schema.channelAccounts)
-    .values({
-      workspaceId: workspace.workspaceId,
-      userId: session.user.id as string,
-      provider: 'twilio',
-      externalAccountId: e164,
-      displayName: body.displayName || e164,
-      status: 'active',
-      // No credentialsEncrypted — Twilio auth comes from TWILIO_AUTH_TOKEN env var at runtime.
-      credentialsEncrypted: null,
-    })
-    .returning({ id: schema.channelAccounts.id });
 
   return NextResponse.json({
     success: true,

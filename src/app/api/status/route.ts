@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { getWorkspace } from '@/lib/auth/workspace';
-import { db, schema } from '@/lib/db';
+import { withWorkspace, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 export async function GET() {
@@ -20,7 +20,7 @@ export async function GET() {
   }
 
   try {
-    const accounts = await db
+    const accounts = await withWorkspace(workspace.workspaceId, (tx) => tx
       .select({
         id: schema.channelAccounts.id,
         externalAccountId: schema.channelAccounts.externalAccountId,
@@ -30,7 +30,7 @@ export async function GET() {
         lastError: schema.channelAccounts.lastError,
       })
       .from(schema.channelAccounts)
-      .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId));
+      .where(eq(schema.channelAccounts.workspaceId, workspace.workspaceId)));
 
     let queueStats = { pending: 0, processing: 0 };
     try {
