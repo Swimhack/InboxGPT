@@ -54,7 +54,7 @@ export function UpgradeModal({ open, onClose, feature }: UpgradeModalProps) {
         </div>
 
         <p className="text-muted-foreground mb-6">
-          Upgrade to Pro to {feature}. Just $9/month — cancel anytime.
+          Upgrade to Pro to {feature}. Just $29/month — cancel anytime.
         </p>
 
         <ul className="space-y-2 mb-6 text-sm">
@@ -75,7 +75,7 @@ export function UpgradeModal({ open, onClose, feature }: UpgradeModalProps) {
           </Button>
           <Button onClick={handleUpgrade} disabled={loading} className="flex-1">
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Upgrade — $9/mo
+            Upgrade — $29/mo
           </Button>
         </div>
       </div>

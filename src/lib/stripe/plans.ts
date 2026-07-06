@@ -7,7 +7,9 @@ export function isAdmin(email: string | null | undefined): boolean {
   return !!email && ADMIN_EMAILS.has(email.toLowerCase());
 }
 
-export type PlanId = 'free' | 'pro';
+// Pricing aligned with the StricklandAI ecosystem standard (2026-07-06):
+// Free → Pro $29/mo → Business $99/mo (matches STRIX Pro/Business tiers).
+export type PlanId = 'free' | 'pro' | 'business';
 
 export interface PlanDef {
   id: PlanId;
@@ -40,18 +42,37 @@ export const PLANS: Record<PlanId, PlanDef> = {
   pro: {
     id: 'pro',
     name: 'Pro',
-    price: 900,
-    priceLabel: '$9/mo',
+    price: 2900,
+    priceLabel: '$29/mo',
+    channels: 5,
+    messagesPerMonth: 10000,
+    ai: true,
+    features: [
+      'Up to 5 email accounts',
+      '10,000 messages/month',
+      'AI daily brief',
+      'AI categorization & priority',
+      'AI suggested replies',
+      'AI email summaries',
+      'Email support',
+    ],
+  },
+  business: {
+    id: 'business',
+    name: 'Business',
+    price: 9900,
+    priceLabel: '$99/mo',
     channels: Infinity,
     messagesPerMonth: Infinity,
     ai: true,
     features: [
       'Unlimited email accounts',
       'Unlimited messages',
-      'AI daily brief',
-      'AI categorization & priority',
-      'AI suggested replies',
-      'AI email summaries',
+      'Everything in Pro',
+      'Team & shared inbox',
+      'Priority support & onboarding',
+      'Self-hosting / custom deployment',
+      'Security review & DPA on request',
     ],
   },
 };
@@ -59,10 +80,12 @@ export const PLANS: Record<PlanId, PlanDef> = {
 export function getPriceId(plan: PlanId): string | null {
   if (plan === 'free') return null;
   if (plan === 'pro') return process.env.STRIPE_PRO_PRICE_ID || null;
+  if (plan === 'business') return process.env.STRIPE_BUSINESS_PRICE_ID || null;
   return null;
 }
 
 export function planFromPriceId(priceId: string): PlanId {
+  if (priceId === process.env.STRIPE_BUSINESS_PRICE_ID) return 'business';
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) return 'pro';
   return 'free';
 }

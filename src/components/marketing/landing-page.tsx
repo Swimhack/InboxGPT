@@ -61,9 +61,9 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section className="max-w-3xl mx-auto px-4 pb-20">
+      <section className="max-w-5xl mx-auto px-4 pb-20">
         <h2 className="text-3xl font-bold text-center mb-10">Simple pricing</h2>
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-3 gap-6">
           {/* Free */}
           <div className="border rounded-xl p-6 bg-white dark:bg-slate-900">
             <h3 className="font-semibold text-lg">Free</h3>
@@ -92,12 +92,12 @@ export default function LandingPage() {
             </div>
             <h3 className="font-semibold text-lg">Pro</h3>
             <div className="mt-2 mb-4">
-              <span className="text-4xl font-bold">$9</span>
+              <span className="text-4xl font-bold">$29</span>
               <span className="text-muted-foreground">/month</span>
             </div>
             <ul className="space-y-2 text-sm mb-6">
-              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Unlimited email accounts</li>
-              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Unlimited messages</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Up to 5 email accounts</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> 10,000 messages/month</li>
               <li className="flex items-center gap-2"><span className="text-green-500">✓</span> AI daily brief</li>
               <li className="flex items-center gap-2"><span className="text-green-500">✓</span> AI categorization &amp; priority</li>
               <li className="flex items-center gap-2"><span className="text-green-500">✓</span> AI suggested replies</li>
@@ -108,6 +108,29 @@ export default function LandingPage() {
               className="block w-full text-center bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors"
             >
               Start Free, Upgrade Anytime
+            </Link>
+          </div>
+
+          {/* Business */}
+          <div className="border rounded-xl p-6 bg-white dark:bg-slate-900">
+            <h3 className="font-semibold text-lg">Business</h3>
+            <div className="mt-2 mb-4">
+              <span className="text-4xl font-bold">$99</span>
+              <span className="text-muted-foreground">/month</span>
+            </div>
+            <ul className="space-y-2 text-sm mb-6">
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Unlimited accounts &amp; messages</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Everything in Pro</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Team &amp; shared inbox</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Priority support &amp; onboarding</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Self-hosting option</li>
+              <li className="flex items-center gap-2"><span className="text-green-500">✓</span> Security review &amp; DPA</li>
+            </ul>
+            <Link
+              href="/register"
+              className="block w-full text-center border border-primary text-primary px-4 py-2 rounded-lg font-medium hover:bg-primary/5 transition-colors"
+            >
+              Get Started
             </Link>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { createCheckoutSession } from '@/lib/stripe/checkout';
 import { getPriceId, type PlanId } from '@/lib/stripe/plans';
 
 const bodySchema = z.object({
-  plan: z.enum(['pro']),
+  plan: z.enum(['pro', 'business']),
 });
 
 export async function POST(request: NextRequest) {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   const priceId = getPriceId(body.data.plan as PlanId);
   if (!priceId) {
     return NextResponse.json(
-      { error: 'Stripe price not configured. Set STRIPE_PRO_PRICE_ID.' },
+      { error: 'Stripe price not configured. Set STRIPE_PRO_PRICE_ID / STRIPE_BUSINESS_PRICE_ID.' },
       { status: 501 }
     );
   }
