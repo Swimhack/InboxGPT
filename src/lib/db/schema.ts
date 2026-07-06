@@ -656,12 +656,3 @@ export type NewJob = typeof jobs.$inferInsert;
 export type AiUsage = typeof aiUsage.$inferSelect;
 export type NewAiUsage = typeof aiUsage.$inferInsert;
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
-
-// Legacy aliases — temporary shim so existing imports compile while Phase 1 refactors land.
-// TODO(phase1): remove after callers migrate to channelAccounts/messages/threads.
-export const emailAccounts = channelAccounts;
-export const emails = messages;
-export type EmailAccount = ChannelAccount;
-export type NewEmailAccount = NewChannelAccount;
-export type Email = Message;
-export type NewEmail = NewMessage;

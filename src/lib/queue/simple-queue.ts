@@ -6,7 +6,7 @@
  */
 
 import { db, schema } from '../db';
-import { eq, and, or, isNull, lte, asc } from 'drizzle-orm';
+import { eq, and, or, lte, sql } from 'drizzle-orm';
 import { generateId } from '../utils';
 
 // Job types (same interface as before, for compatibility)
@@ -70,43 +70,51 @@ export async function addAIProcessingJob(data: AIProcessingJobData): Promise<str
   return addJob('ai-processing', data, { priority: 5 });
 }
 
-// Get the next job to process
+// Get the next job to process.
+//
+// The claim is ATOMIC: a single UPDATE with a FOR UPDATE SKIP LOCKED subquery
+// selects and locks the next eligible job in one statement, so two concurrent
+// workers (or two app machines) can never claim the same job. The previous
+// select-then-update implementation had a race window between the two queries.
 export async function getNextJob(type?: JobType): Promise<schema.Job | null> {
-  const now = new Date();
+  const typeFilter = type ? sql` AND type = ${type}` : sql``;
 
-  const conditions = [
-    eq(schema.jobs.status, 'pending'),
-    or(
-      isNull(schema.jobs.scheduledFor),
-      lte(schema.jobs.scheduledFor, now)
-    ),
-  ];
+  const result = await db.execute(sql`
+    UPDATE jobs SET
+      status = 'processing',
+      started_at = now(),
+      attempts = attempts + 1
+    WHERE id = (
+      SELECT id FROM jobs
+      WHERE status = 'pending'
+        AND (scheduled_for IS NULL OR scheduled_for <= now())${typeFilter}
+      ORDER BY priority DESC, created_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING *
+  `);
 
-  if (type) {
-    conditions.push(eq(schema.jobs.type, type));
-  }
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
 
-  const job = await db.query.jobs.findFirst({
-    where: and(...conditions),
-    orderBy: [
-      // Higher priority first, then oldest first
-      asc(schema.jobs.priority),
-      asc(schema.jobs.createdAt),
-    ],
-  });
-
-  if (!job) return null;
-
-  // Mark as processing
-  await db.update(schema.jobs)
-    .set({
-      status: 'processing',
-      startedAt: now,
-      attempts: job.attempts + 1,
-    })
-    .where(eq(schema.jobs.id, job.id));
-
-  return { ...job, attempts: job.attempts + 1, status: 'processing', startedAt: now };
+  // Map snake_case row → Drizzle Job shape
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    type: row.type,
+    data: row.data,
+    status: row.status,
+    priority: row.priority,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    error: row.error,
+    result: row.result,
+    scheduledFor: row.scheduled_for ? new Date(row.scheduled_for as string) : null,
+    startedAt: row.started_at ? new Date(row.started_at as string) : null,
+    completedAt: row.completed_at ? new Date(row.completed_at as string) : null,
+    createdAt: new Date(row.created_at as string),
+  } as schema.Job;
 }
 
 // Mark job as completed

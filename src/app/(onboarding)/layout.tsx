@@ -16,8 +16,8 @@ export default async function OnboardingLayout({
   }
 
   // Returning users with accounts skip onboarding
-  const accounts = await db.query.emailAccounts.findMany({
-    where: eq(schema.emailAccounts.userId, session.user.id),
+  const accounts = await db.query.channelAccounts.findMany({
+    where: eq(schema.channelAccounts.userId, session.user.id),
     columns: { id: true },
   });
 

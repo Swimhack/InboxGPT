@@ -31,8 +31,8 @@ export default async function Home() {
   // New user - go to onboarding
   if (!user?.onboardingCompletedAt) {
     // Check if they have any email accounts
-    const accountCount = await db.query.emailAccounts.findMany({
-      where: eq(schema.emailAccounts.userId, session.user.id),
+    const accountCount = await db.query.channelAccounts.findMany({
+      where: eq(schema.channelAccounts.userId, session.user.id),
       columns: { id: true },
     });
 
